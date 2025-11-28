@@ -138,6 +138,41 @@ app_license = "custom"
 # Hook on document methods and events
 
 # doc_events = {
+# hooks.py
+doc_events = {
+    "Share Transfer": {
+        "validate": [
+            "upande_sphynx.share_transfer_customization.share_transfer_controller.set_standard_accounts",
+            "upande_sphynx.share_transfer_customization.share_transfer_controller.calculate_rate_and_amount",
+            "upande_sphynx.share_transfer_customization.share_transfer_controller.validate_accounts"
+            
+        ],
+        "before_submit": [
+            "upande_sphynx.share_transfer_customization.share_transfer_controller.calculate_rate_and_amount",
+            "upande_sphynx.share_transfer_customization.share_transfer_controller.validate_accounts"
+        ]
+        # Note: We're NOT calling create_custom_journal_entry on on_submit
+        # Users will create JE manually via button
+    }
+    
+    # ,
+
+    # "Share Movement": {
+    #     "validate": "upande_sphynx.doctype.share_movement.validate_share_movement"
+    # }
+}
+
+# doc_events = {
+#     "Share Transfer": {
+#         # The 'validate' event runs before saving and before submitting
+#        #"validate": "upande_sphynx.share_transfer_customization.share_transfer_controller.validate_share_transfer", 
+        
+#         # The 'on_submit' event runs after a document is submitted
+#         # This is where you would call your custom JE creation logic
+#         "on_submit": "upande_sphynx.share_transfer_customization.share_transfer_controller.create_custom_journal_entry"
+#     }
+# }
+
 # 	"*": {
 # 		"on_update": "method",
 # 		"on_cancel": "method",

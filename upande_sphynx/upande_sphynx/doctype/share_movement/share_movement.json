@@ -1,0 +1,377 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "format:SM-{YYYY}-{#####}",
+ "creation": "2025-11-13 11:03:50.382232",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "movement_details_section",
+  "transaction_date",
+  "movement_type",
+  "column_break_1",
+  "status",
+  "company",
+  "shareholder_section",
+  "from_shareholder",
+  "to_shareholder",
+  "share_details_section",
+  "share_class",
+  "number_of_shares",
+  "par_value_per_share",
+  "par_value_currency",
+  "column_break_2",
+  "price_per_share",
+  "transaction_currency",
+  "total_amount",
+  "section_break_exchange",
+  "exchange_rate",
+  "base_currency",
+  "column_break_3",
+  "total_amount_base_currency",
+  "accounting_section",
+  "share_capital_account",
+  "share_premium_account",
+  "column_break_4",
+  "share_capital_amount",
+  "share_premium_amount",
+  "section_break_je",
+  "journal_entry_ref",
+  "auto_create_journal_entry",
+  "source_section",
+  "source_document_type",
+  "source_document_name",
+  "column_break_5",
+  "conversion_details",
+  "additional_section",
+  "certificate_numbers",
+  "remarks",
+  "attachments_section",
+  "supporting_documents",
+  "amended_from"
+ ],
+ "fields": [
+  {
+   "fieldname": "movement_details_section",
+   "fieldtype": "Section Break",
+   "label": "Movement Details"
+  },
+  {
+   "default": "Today",
+   "fieldname": "transaction_date",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "Transaction Date",
+   "reqd": 1
+  },
+  {
+   "fieldname": "movement_type",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Movement Type",
+   "options": "\nEquity Capital Injection\nShare Purchase\nShare Transfer\nLoan Equity Injection\nShare Buyback",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "Draft",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Status",
+   "options": "Draft\nCompleted\nCancelled",
+   "read_only": 1
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company",
+   "reqd": 1
+  },
+  {
+   "fieldname": "shareholder_section",
+   "fieldtype": "Section Break",
+   "label": "Shareholder Details"
+  },
+  {
+   "description": "Leave blank for new issuances",
+   "fieldname": "from_shareholder",
+   "fieldtype": "Link",
+   "label": "From Shareholder",
+   "options": "Shareholder"
+  },
+  {
+   "fieldname": "to_shareholder",
+   "fieldtype": "Link",
+   "label": "To Shareholder",
+   "options": "Shareholder",
+   "reqd": 1
+  },
+  {
+   "fieldname": "share_details_section",
+   "fieldtype": "Section Break",
+   "label": "Share Details"
+  },
+  {
+   "fieldname": "share_class",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Share Class",
+   "options": "Share Type",
+   "reqd": 1
+  },
+  {
+   "fieldname": "number_of_shares",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Number of Shares",
+   "reqd": 1
+  },
+  {
+   "fieldname": "par_value_per_share",
+   "fieldtype": "Currency",
+   "label": "Par Value per Share",
+   "options": "par_value_currency",
+   "reqd": 1
+  },
+  {
+   "default": "USD",
+   "fieldname": "par_value_currency",
+   "fieldtype": "Link",
+   "label": "Par Value Currency",
+   "options": "Currency",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "price_per_share",
+   "fieldtype": "Currency",
+   "label": "Price per Share",
+   "options": "transaction_currency",
+   "reqd": 1
+  },
+  {
+   "default": "USD",
+   "fieldname": "transaction_currency",
+   "fieldtype": "Link",
+   "label": "Transaction Currency",
+   "options": "Currency",
+   "reqd": 1
+  },
+  {
+   "fieldname": "total_amount",
+   "fieldtype": "Currency",
+   "label": "Total Transaction Amount",
+   "options": "transaction_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_break_exchange",
+   "fieldtype": "Section Break"
+  },
+  {
+   "description": "Rate to convert transaction currency to company base currency",
+   "fieldname": "exchange_rate",
+   "fieldtype": "Float",
+   "label": "Exchange Rate (Transaction to Base)",
+   "precision": "9"
+  },
+  {
+   "fieldname": "base_currency",
+   "fieldtype": "Link",
+   "label": "Company Base Currency",
+   "options": "Currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_3",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "total_amount_base_currency",
+   "fieldtype": "Currency",
+   "label": "Total Amount (Base Currency)",
+   "options": "base_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "accounting_section",
+   "fieldtype": "Section Break",
+   "label": "Accounting Details"
+  },
+  {
+   "fieldname": "share_capital_account",
+   "fieldtype": "Link",
+   "label": "Share Capital Account",
+   "options": "Account",
+   "reqd": 1
+  },
+  {
+   "fieldname": "share_premium_account",
+   "fieldtype": "Link",
+   "label": "Share Premium Account",
+   "options": "Account",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_4",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "share_capital_amount",
+   "fieldtype": "Currency",
+   "label": "Share Capital Amount",
+   "options": "transaction_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "share_premium_amount",
+   "fieldtype": "Currency",
+   "label": "Share Premium Amount",
+   "options": "transaction_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_break_je",
+   "fieldtype": "Section Break"
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "journal_entry_ref",
+   "fieldtype": "Link",
+   "label": "Journal Entry Reference",
+   "options": "Journal Entry",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "auto_create_journal_entry",
+   "fieldtype": "Check",
+   "label": "Auto-create Journal Entry on Submit"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "source_section",
+   "fieldtype": "Section Break",
+   "label": "Source Document"
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "source_document_type",
+   "fieldtype": "Select",
+   "label": "Source Document Type",
+   "options": "\nShare Agreement\nConvertible Loan Note\nManual Entry",
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "source_document_name",
+   "fieldtype": "Dynamic Link",
+   "label": "Source Document",
+   "options": "source_document_type",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_5",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "conversion_details",
+   "fieldtype": "Small Text",
+   "label": "Conversion Details",
+   "read_only": 1
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "additional_section",
+   "fieldtype": "Section Break",
+   "label": "Additional Information"
+  },
+  {
+   "description": "Comma-separated certificate numbers",
+   "fieldname": "certificate_numbers",
+   "fieldtype": "Small Text",
+   "label": "Certificate Numbers"
+  },
+  {
+   "fieldname": "remarks",
+   "fieldtype": "Text Editor",
+   "label": "Remarks"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "attachments_section",
+   "fieldtype": "Section Break",
+   "label": "Attachments"
+  },
+  {
+   "fieldname": "supporting_documents",
+   "fieldtype": "Attach",
+   "label": "Supporting Documents"
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "label": "Amended From",
+   "no_copy": 1,
+   "options": "Share Movement",
+   "print_hide": 1,
+   "read_only": 1,
+   "search_index": 1
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "is_submittable": 1,
+ "links": [],
+ "modified": "2025-11-18 11:02:43.641039",
+ "modified_by": "Administrator",
+ "module": "Upande Sphynx",
+ "name": "Share Movement",
+ "naming_rule": "Expression",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "amend": 1,
+   "cancel": 1,
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  },
+  {
+   "cancel": 1,
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Accounts Manager",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

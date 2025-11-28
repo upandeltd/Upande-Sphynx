@@ -1,0 +1,466 @@
+{
+ "actions": [],
+ "allow_import": 1,
+ "allow_rename": 1,
+ "autoname": "format:CLN-{YYYY}-{#####}",
+ "creation": "2025-11-12 08:22:39.608991",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "loan_details_section",
+  "issue_date",
+  "lender",
+  "lender_type",
+  "column_break_cln_1",
+  "maturity_date",
+  "company_shareholder",
+  "principal_section",
+  "principal_amount",
+  "interest_rate",
+  "interest_calculation_method",
+  "column_break_cln_2",
+  "interest_payment_frequency",
+  "accrued_interest",
+  "last_interest_accrual_date",
+  "conversion_terms_section",
+  "conversion_trigger",
+  "qualified_financing_threshold",
+  "conversion_discount_rate",
+  "column_break_cln_3",
+  "valuation_cap",
+  "conversion_share_type",
+  "par_value_per_share",
+  "section_break_conversion_calc",
+  "conversion_price_formula",
+  "conversion_results_section",
+  "conversion_date",
+  "total_converted_amount",
+  "column_break_cln_4",
+  "shares_issued",
+  "conversion_price",
+  "accounting_section",
+  "loan_liability_account",
+  "bank_account",
+  "interest_expense_account",
+  "interest_payable_account",
+  "column_break_cln_5",
+  "share_capital_account",
+  "share_premium_account",
+  "additional_terms_section",
+  "early_repayment_allowed",
+  "early_repayment_penalty",
+  "other_terms",
+  "company",
+  "documents_section",
+  "signed_note_agreement",
+  "supporting_documents",
+  "amended_from",
+  "references_tab",
+  "status",
+  "disbursement_journal_entry_ref",
+  "share_transfer_ref",
+  "conversion_journal_entry_ref"
+ ],
+ "fields": [
+  {
+   "fieldname": "loan_details_section",
+   "fieldtype": "Section Break",
+   "label": "Loan Details"
+  },
+  {
+   "default": "Today",
+   "fieldname": "issue_date",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "Issue Date",
+   "reqd": 1
+  },
+  {
+   "fieldname": "lender",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Lender (Shareholder)",
+   "options": "Shareholder",
+   "reqd": 1
+  },
+  {
+   "fieldname": "lender_type",
+   "fieldtype": "Select",
+   "label": "Lender Type",
+   "options": "Individual\nCompany\nFund\nOther",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_cln_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "maturity_date",
+   "fieldtype": "Date",
+   "label": "Maturity Date",
+   "reqd": 1
+  },
+  {
+   "default": "Sphynx",
+   "fieldname": "company_shareholder",
+   "fieldtype": "Link",
+   "label": "Company (Shareholder)",
+   "options": "Shareholder",
+   "reqd": 1
+  },
+  {
+   "fieldname": "principal_section",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "principal_amount",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Principal Amount",
+   "reqd": 1
+  },
+  {
+   "fieldname": "interest_rate",
+   "fieldtype": "Percent",
+   "label": "Annual Interest Rate (%)"
+  },
+  {
+   "default": "Simple",
+   "fieldname": "interest_calculation_method",
+   "fieldtype": "Select",
+   "label": "Interest Calculation",
+   "options": "Simple\nCompound"
+  },
+  {
+   "fieldname": "column_break_cln_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "At Maturity",
+   "fieldname": "interest_payment_frequency",
+   "fieldtype": "Select",
+   "label": "Interest Payment Frequency",
+   "options": "Monthly\nQuarterly\nAnnually\nAt Maturity\nCapitalized"
+  },
+  {
+   "default": "0",
+   "fieldname": "accrued_interest",
+   "fieldtype": "Currency",
+   "label": "Accrued Interest",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_interest_accrual_date",
+   "fieldtype": "Date",
+   "label": "Last Interest Accrual Date",
+   "read_only": 1
+  },
+  {
+   "fieldname": "conversion_terms_section",
+   "fieldtype": "Section Break",
+   "label": "Conversion Terms"
+  },
+  {
+   "fieldname": "conversion_trigger",
+   "fieldtype": "Select",
+   "label": "Conversion Trigger",
+   "options": "At Maturity\nQualified Financing Round\nOptional\nAutomatic on Event",
+   "reqd": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "qualified_financing_threshold",
+   "fieldtype": "Currency",
+   "label": "Qualified Financing Threshold"
+  },
+  {
+   "allow_on_submit": 1,
+   "description": "Discount on next round price",
+   "fieldname": "conversion_discount_rate",
+   "fieldtype": "Percent",
+   "label": "Conversion Discount Rate (%)"
+  },
+  {
+   "fieldname": "column_break_cln_3",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Maximum valuation for conversion calculation",
+   "fieldname": "valuation_cap",
+   "fieldtype": "Currency",
+   "label": "Valuation Cap"
+  },
+  {
+   "fieldname": "conversion_share_type",
+   "fieldtype": "Link",
+   "label": "Share Type on Conversion",
+   "options": "Share Type",
+   "reqd": 1
+  },
+  {
+   "fieldname": "par_value_per_share",
+   "fieldtype": "Currency",
+   "label": "Par Value per Share",
+   "reqd": 1
+  },
+  {
+   "fieldname": "section_break_conversion_calc",
+   "fieldtype": "Section Break",
+   "hidden": 1
+  },
+  {
+   "default": "Lower of: (Next Round Price * (1 - Discount Rate)) OR (Valuation Cap / Fully Diluted Shares)",
+   "fieldname": "conversion_price_formula",
+   "fieldtype": "Small Text",
+   "label": "Conversion Price Formula",
+   "read_only": 1
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "conversion_results_section",
+   "fieldtype": "Section Break",
+   "label": "Conversion Results"
+  },
+  {
+   "fieldname": "conversion_date",
+   "fieldtype": "Date",
+   "label": "Conversion Date",
+   "read_only": 1
+  },
+  {
+   "description": "Principal + Accrued Interest",
+   "fieldname": "total_converted_amount",
+   "fieldtype": "Currency",
+   "label": "Total Converted Amount",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_cln_4",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "shares_issued",
+   "fieldtype": "Int",
+   "label": "Shares Issued",
+   "read_only": 1
+  },
+  {
+   "fieldname": "conversion_price",
+   "fieldtype": "Currency",
+   "label": "Conversion Price per Share",
+   "read_only": 1
+  },
+  {
+   "fieldname": "accounting_section",
+   "fieldtype": "Section Break",
+   "label": "Accounting Details"
+  },
+  {
+   "fieldname": "loan_liability_account",
+   "fieldtype": "Link",
+   "label": "Loan Liability Account",
+   "options": "Account",
+   "reqd": 1
+  },
+  {
+   "fieldname": "bank_account",
+   "fieldtype": "Link",
+   "label": "Bank Account",
+   "options": "Bank Account",
+   "placeholder": "Bank receiving the loan funds",
+   "reqd": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "interest_expense_account",
+   "fieldtype": "Link",
+   "label": "Interest Expense Account",
+   "options": "Account"
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "interest_payable_account",
+   "fieldtype": "Link",
+   "label": "Interest Payable Account",
+   "options": "Account"
+  },
+  {
+   "fieldname": "column_break_cln_5",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "share_capital_account",
+   "fieldtype": "Link",
+   "label": "Share Capital Account",
+   "options": "Account",
+   "reqd": 1
+  },
+  {
+   "fieldname": "share_premium_account",
+   "fieldtype": "Link",
+   "label": "Share Premium Account",
+   "options": "Account",
+   "reqd": 1
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "additional_terms_section",
+   "fieldtype": "Section Break",
+   "label": "Additional Terms"
+  },
+  {
+   "default": "0",
+   "fieldname": "early_repayment_allowed",
+   "fieldtype": "Check",
+   "label": "Early Repayment Allowed"
+  },
+  {
+   "fieldname": "early_repayment_penalty",
+   "fieldtype": "Percent",
+   "label": "Early Repayment Penalty (%)"
+  },
+  {
+   "fieldname": "other_terms",
+   "fieldtype": "Text Editor",
+   "label": "Other Terms and Conditions"
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "documents_section",
+   "fieldtype": "Section Break",
+   "label": "Documents"
+  },
+  {
+   "fieldname": "signed_note_agreement",
+   "fieldtype": "Attach",
+   "label": "Signed Note Agreement"
+  },
+  {
+   "fieldname": "supporting_documents",
+   "fieldtype": "Text Editor",
+   "label": "Supporting Documents"
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "label": "Amended From",
+   "no_copy": 1,
+   "options": "Convertible Loan Note",
+   "print_hide": 1,
+   "read_only": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "references_tab",
+   "fieldtype": "Tab Break",
+   "label": "References"
+  },
+  {
+   "allow_on_submit": 1,
+   "default": "Draft",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Status",
+   "options": "Draft\nActive\nConverted\nRepaid\nCancelled",
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "disbursement_journal_entry_ref",
+   "fieldtype": "Link",
+   "label": "Disbursement Journal Entry",
+   "options": "Journal Entry",
+   "read_only": 1
+  },
+  {
+   "fieldname": "share_transfer_ref",
+   "fieldtype": "Link",
+   "label": "Share Transfer Reference",
+   "options": "Share Transfer",
+   "read_only": 1
+  },
+  {
+   "fieldname": "conversion_journal_entry_ref",
+   "fieldtype": "Link",
+   "label": "Conversion Journal Entry",
+   "options": "Journal Entry",
+   "read_only": 1
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "is_submittable": 1,
+ "links": [],
+ "modified": "2025-11-28 12:48:35.060441",
+ "modified_by": "Administrator",
+ "module": "Upande Sphynx",
+ "name": "Convertible Loan Note",
+ "naming_rule": "Expression",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "amend": 1,
+   "cancel": 1,
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  },
+  {
+   "cancel": 1,
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Accounts Manager",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  }
+ ],
+ "protect_attached_files": 1,
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [
+  {
+   "color": "Red",
+   "title": "Draft"
+  },
+  {
+   "color": "Purple",
+   "title": "Active"
+  },
+  {
+   "color": "Light Blue",
+   "title": "Converted"
+  },
+  {
+   "color": "Green",
+   "title": "Repaid"
+  },
+  {
+   "color": "Red",
+   "title": "Cancelled"
+  }
+ ],
+ "track_changes": 1
+}
