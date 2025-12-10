@@ -141,7 +141,9 @@ def generate_certificate_numbers(doc):
     if doc.is_new() and not doc.certificate_numbers:
         # Only for movements that issue new shares
         if doc.movement_type in [
-            "Initial Share Issuance",
+            "Equity Capital Injection",
+            "Share Purchase",
+            "Loan Equity Injection",
             "Share Subscription",
             "CLN Conversion",
             "Bonus Issue",
@@ -189,3 +191,15 @@ def generate_certificate_numbers(doc):
                 indicator="green",
                 alert=True
             )
+
+def on_cancel(self):
+    """Handle cancellation of share movement"""
+    # Clear reference in source documents
+    if self.source_document_type and self.source_document_name:
+        frappe.db.set_value(
+            self.source_document_type,
+            self.source_document_name,
+            "share_movement_ref",
+            None,
+            update_modified=False
+        )
