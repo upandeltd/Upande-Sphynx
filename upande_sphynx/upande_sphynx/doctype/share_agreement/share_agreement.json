@@ -19,6 +19,8 @@
   "share_type",
   "number_of_shares",
   "rate_per_share",
+  "transaction_currency",
+  "exchange_rate",
   "column_break_2",
   "par_value_per_share",
   "total_consideration",
@@ -86,7 +88,7 @@
    "fieldname": "agreement_type",
    "fieldtype": "Select",
    "label": "Agreement Type",
-   "options": "\nSubscription Agreement\nShare Purchase Agreement\nShareholders Agreement\nVesting Agreement",
+   "options": "\nSubscription Agreement\nShare Purchase Agreement\nSecondary Transfer Agreement\nShareholders Agreement\nVesting Agreement",
    "reqd": 1
   },
   {
@@ -262,6 +264,7 @@
    "fieldtype": "Column Break"
   },
   {
+   "allow_on_submit": 1,
    "fieldname": "bank_account",
    "fieldtype": "Link",
    "label": "Bank Account",
@@ -300,6 +303,7 @@
    "fieldname": "journal_entry_ref",
    "fieldtype": "Link",
    "label": "Journal Entry Reference",
+   "no_copy": 1,
    "options": "Journal Entry",
    "read_only": 1
   },
@@ -308,6 +312,7 @@
    "fieldname": "share_transfer_ref",
    "fieldtype": "Link",
    "label": "Share Transfer Reference",
+   "no_copy": 1,
    "options": "Share Transfer",
    "read_only": 1
   },
@@ -316,6 +321,7 @@
    "fieldname": "share_movement_ref",
    "fieldtype": "Link",
    "label": "Share Movement Reference",
+   "no_copy": 1,
    "options": "Share Movement",
    "read_only": 1
   },
@@ -344,13 +350,27 @@
    "print_hide": 1,
    "read_only": 1,
    "search_index": 1
+  },
+  {
+   "default": "USD",
+   "fieldname": "transaction_currency",
+   "fieldtype": "Link",
+   "label": "Transaction Currency",
+   "options": "Currency",
+   "reqd": 1
+  },
+  {
+   "fieldname": "exchange_rate",
+   "fieldtype": "Float",
+   "label": "Exchange Rate (to Base Currency)",
+   "precision": "9"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2025-11-28 12:49:42.510124",
+ "modified": "2026-01-23 21:35:23.277504",
  "modified_by": "Administrator",
  "module": "Upande Sphynx",
  "name": "Share Agreement",

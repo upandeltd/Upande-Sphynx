@@ -62,14 +62,17 @@ def issue_shares_from_agreement(share_agreement_name):
         "share_premium_account": agreement.share_premium_account,
         "share_capital_amount": share_capital,
         "share_premium_amount": share_premium,
+        "bank_account": agreement.bank_account,
+        "payment_date": agreement.payment_date,
         "source_document_type": "Share Agreement",
         "source_document_name": agreement.name,
+        "share_agreement_type": agreement.agreement_type,
         "remarks": "Shares issued as per Share Agreement {0}".format(agreement.name),
         "auto_create_journal_entry": 1
     })
     
     sm.insert(ignore_permissions=True)
-    sm.submit()
+    sm.save()
     
     # Update Share Agreement using db_set (works for submitted documents)
     frappe.db.set_value("Share Agreement", agreement.name, {
@@ -115,6 +118,7 @@ def create_journal_entry_from_share_movement(share_movement_name):
     
     # Determine debit/credit based on movement type
     is_inflow = sm.movement_type in [
+        "Equity Capital Injection",
         "Initial Share Issuance", 
         "Share Subscription", 
         "Share Purchase", 
@@ -131,8 +135,8 @@ def create_journal_entry_from_share_movement(share_movement_name):
             "debit_in_account_currency": sm.total_amount,
             "account_currency": sm.transaction_currency,
             "exchange_rate": sm.exchange_rate,
-            "reference_type": "Share Movement",
-            "reference_name": sm.name,
+            # "reference_type": "Share Movement",
+            # "reference_name": sm.name,
             "company": sm.company,
             "against_account": ", ".join(filter(None, [sm.share_capital_account, sm.share_premium_account if sm.share_premium_amount > 0 else None]))
         })
@@ -219,8 +223,11 @@ def create_journal_entry_from_share_movement(share_movement_name):
     je.submit()
     
     # Update Share Movement using db_set
-    frappe.db.set_value("Share Movement", sm.name, "journal_entry_ref", je.name)
-    
+    frappe.db.set_value("Share Movement", sm.name,
+                        {"journal_entry_ref": je.name,
+                         "status": "Issued"
+                        })
+
     frappe.db.commit()
     
     frappe.msgprint(_("Journal Entry {0} created successfully").format(je.name))

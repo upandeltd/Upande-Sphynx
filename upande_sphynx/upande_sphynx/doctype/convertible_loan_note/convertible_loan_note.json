@@ -17,6 +17,8 @@
   "company_shareholder",
   "principal_section",
   "principal_amount",
+  "loan_currency",
+  "exchange_rate",
   "interest_rate",
   "interest_calculation_method",
   "column_break_cln_2",
@@ -360,7 +362,8 @@
   {
    "fieldname": "references_tab",
    "fieldtype": "Tab Break",
-   "label": "References"
+   "label": "References",
+   "no_copy": 1
   },
   {
    "allow_on_submit": 1,
@@ -377,6 +380,7 @@
    "fieldname": "disbursement_journal_entry_ref",
    "fieldtype": "Link",
    "label": "Disbursement Journal Entry",
+   "no_copy": 1,
    "options": "Journal Entry",
    "read_only": 1
   },
@@ -384,6 +388,7 @@
    "fieldname": "share_transfer_ref",
    "fieldtype": "Link",
    "label": "Share Transfer Reference",
+   "no_copy": 1,
    "options": "Share Transfer",
    "read_only": 1
   },
@@ -391,15 +396,31 @@
    "fieldname": "conversion_journal_entry_ref",
    "fieldtype": "Link",
    "label": "Conversion Journal Entry",
+   "no_copy": 1,
    "options": "Journal Entry",
    "read_only": 1
+  },
+  {
+   "default": "USD",
+   "fieldname": "loan_currency",
+   "fieldtype": "Link",
+   "label": "Loan Currency",
+   "options": "Currency",
+   "reqd": 1
+  },
+  {
+   "fieldname": "exchange_rate",
+   "fieldtype": "Float",
+   "label": "Exchange Rate (To Base Currency)",
+   "precision": "9",
+   "reqd": 1
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2025-11-28 12:48:35.060441",
+ "modified": "2026-01-23 21:48:34.371609",
  "modified_by": "Administrator",
  "module": "Upande Sphynx",
  "name": "Convertible Loan Note",

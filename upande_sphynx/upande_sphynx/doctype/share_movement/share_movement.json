@@ -1,5 +1,6 @@
 {
  "actions": [],
+ "allow_import": 1,
  "allow_rename": 1,
  "autoname": "format:SM-{YYYY}-{#####}",
  "creation": "2025-11-13 11:03:50.382232",
@@ -11,19 +12,22 @@
   "transaction_date",
   "movement_type",
   "column_break_1",
-  "status",
   "company",
+  "status",
   "shareholder_section",
   "from_shareholder",
+  "from_folio_no",
+  "column_break_dixr",
   "to_shareholder",
+  "to_folio_no",
   "share_details_section",
   "share_class",
   "number_of_shares",
   "par_value_per_share",
   "par_value_currency",
   "column_break_2",
-  "price_per_share",
   "transaction_currency",
+  "price_per_share",
   "total_amount",
   "section_break_exchange",
   "exchange_rate",
@@ -36,20 +40,26 @@
   "column_break_4",
   "share_capital_amount",
   "share_premium_amount",
-  "section_break_je",
-  "journal_entry_ref",
-  "auto_create_journal_entry",
-  "source_section",
-  "source_document_type",
-  "source_document_name",
-  "column_break_5",
-  "conversion_details",
+  "section_break_zfts",
+  "bank_account",
+  "payment_date",
+  "payment_reference",
   "additional_section",
   "certificate_numbers",
   "remarks",
   "attachments_section",
   "supporting_documents",
-  "amended_from"
+  "amended_from",
+  "references_tab",
+  "source_section",
+  "source_document_type",
+  "source_document_name",
+  "share_agreement_type",
+  "column_break_5",
+  "conversion_details",
+  "section_break_zbvb",
+  "auto_create_journal_entry",
+  "journal_entry_ref"
  ],
  "fields": [
   {
@@ -70,7 +80,7 @@
    "fieldtype": "Select",
    "in_list_view": 1,
    "label": "Movement Type",
-   "options": "\nEquity Capital Injection\nShare Purchase\nShare Transfer\nLoan Equity Injection\nShare Buyback",
+   "options": "\nEquity Capital Injection\nShare Purchase\nLoan Equity Injection\nShare Buyback",
    "reqd": 1
   },
   {
@@ -99,9 +109,9 @@
    "label": "Shareholder Details"
   },
   {
-   "description": "Leave blank for new issuances",
    "fieldname": "from_shareholder",
    "fieldtype": "Link",
+   "hidden": 1,
    "label": "From Shareholder",
    "options": "Shareholder"
   },
@@ -208,6 +218,7 @@
    "label": "Accounting Details"
   },
   {
+   "description": "Filtered by company and account type: Equity",
    "fieldname": "share_capital_account",
    "fieldtype": "Link",
    "label": "Share Capital Account",
@@ -215,6 +226,7 @@
    "reqd": 1
   },
   {
+   "description": "Filtered by company and account type: Equity",
    "fieldname": "share_premium_account",
    "fieldtype": "Link",
    "label": "Share Premium Account",
@@ -240,10 +252,6 @@
    "read_only": 1
   },
   {
-   "fieldname": "section_break_je",
-   "fieldtype": "Section Break"
-  },
-  {
    "allow_on_submit": 1,
    "fieldname": "journal_entry_ref",
    "fieldtype": "Link",
@@ -252,7 +260,7 @@
    "read_only": 1
   },
   {
-   "default": "0",
+   "default": "1",
    "fieldname": "auto_create_journal_entry",
    "fieldtype": "Check",
    "label": "Auto-create Journal Entry on Submit"
@@ -296,7 +304,7 @@
    "label": "Additional Information"
   },
   {
-   "description": "Comma-separated certificate numbers",
+   "description": "Auto-generated certificate numbers for issued shares",
    "fieldname": "certificate_numbers",
    "fieldtype": "Small Text",
    "label": "Certificate Numbers"
@@ -326,13 +334,70 @@
    "print_hide": 1,
    "read_only": 1,
    "search_index": 1
+  },
+  {
+   "fetch_from": "from_shareholder.folio_no",
+   "fieldname": "from_folio_no",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Folio No"
+  },
+  {
+   "fieldname": "column_break_dixr",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fetch_from": "to_shareholder.folio_no",
+   "fieldname": "to_folio_no",
+   "fieldtype": "Data",
+   "label": "Folio No"
+  },
+  {
+   "fieldname": "section_break_zfts",
+   "fieldtype": "Section Break"
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "bank_account",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Bank Account",
+   "options": "Bank Account",
+   "reqd": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "payment_date",
+   "fieldtype": "Date",
+   "label": "Payment Date"
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "payment_reference",
+   "fieldtype": "Data",
+   "label": "Payment Reference"
+  },
+  {
+   "fieldname": "references_tab",
+   "fieldtype": "Tab Break",
+   "label": "References"
+  },
+  {
+   "fieldname": "section_break_zbvb",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "share_agreement_type",
+   "fieldtype": "Data",
+   "label": "Share Agreement Type",
+   "read_only": 1
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2025-11-18 11:02:43.641039",
+ "modified": "2026-01-23 21:35:43.459381",
  "modified_by": "Administrator",
  "module": "Upande Sphynx",
  "name": "Share Movement",
@@ -369,9 +434,23 @@
    "write": 1
   }
  ],
+ "protect_attached_files": 1,
  "row_format": "Dynamic",
  "sort_field": "modified",
  "sort_order": "DESC",
- "states": [],
+ "states": [
+  {
+   "color": "Red",
+   "title": "Draft"
+  },
+  {
+   "color": "Orange",
+   "title": "Pending Issue"
+  },
+  {
+   "color": "Green",
+   "title": "Issued"
+  }
+ ],
  "track_changes": 1
 }
