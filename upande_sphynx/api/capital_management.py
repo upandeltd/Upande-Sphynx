@@ -174,8 +174,8 @@ def create_journal_entry_from_share_movement(share_movement_name):
             "credit_in_account_currency": sm.total_amount,
             "account_currency": sm.transaction_currency,
             "exchange_rate": sm.exchange_rate,
-            "reference_type": "Share Movement",
-            "reference_name": sm.name,
+            # "reference_type": "Share Movement",
+            # "reference_name": sm.name,
             "company": sm.company,
             "against_account": ", ".join(filter(None, [sm.share_capital_account, sm.share_premium_account if sm.share_premium_amount > 0 else None]))
         })
@@ -299,8 +299,8 @@ def record_cln_disbursement(cln_name):
                 "debit_in_account_currency": cln.principal_amount,
                 "account_currency": loan_currency,
                 "exchange_rate": exchange_rate,
-                "reference_type": "Convertible Loan Note",
-                "reference_name": cln.name,
+                # "reference_type": "Convertible Loan Note",
+                # "reference_name": cln.name,
                 "company": cln.company,
                 "against_account": cln.loan_liability_account
             },
@@ -446,8 +446,8 @@ def accrue_cln_interest(cln_name):
         "exchange_rate": current_exchange_rate if payable_currency != company_currency else 1.0,
         "party_type": "Shareholder",
         "party": cln.lender,
-        "reference_type": "Convertible Loan Note",
-        "reference_name": cln.name,
+        # "reference_type": "Convertible Loan Note",
+        # "reference_name": cln.name,
         "company": cln.company,
         "against_account": cln.interest_expense_account
     }
@@ -726,8 +726,8 @@ def create_cln_conversion_journal_entry(cln, total_amount, share_capital_amount,
         "exchange_rate": exchange_rate,
         "party_type": "Shareholder",
         "party": cln.lender,
-        "reference_type": "Convertible Loan Note",
-        "reference_name": cln.name,
+        # "reference_type": "Convertible Loan Note",
+        # "reference_name": cln.name,
         "company": cln.company
     })
     
