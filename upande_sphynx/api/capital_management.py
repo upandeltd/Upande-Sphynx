@@ -342,19 +342,20 @@ def record_cln_disbursement(cln_name):
     
     return je.name
 
+import frappe
+from frappe import _
+from frappe.utils import flt, getdate
 
 @frappe.whitelist()
-def accrue_cln_interest(cln_name):
-    """Accrue interest for Convertible Loan Note with proper multi-currency handling
+def accrue_cln_interest(cln_name, accrual_date=None, exchange_rate=None):
+    """
+    Accrue interest for Convertible Loan Note with user-specified date and exchange rate
+    Now with interest accrual history tracking
     
-    ACCOUNTING LOGIC (Multi-Currency):
-    Interest Accrual:
-        Dr: Interest Expense Account (in company currency - expense)
-            Cr: Interest Payable Account (in loan currency - liability)
-    
-    The expense account picks up the converted amount in company currency
-    while the liability remains in the original loan currency.
-    This ensures proper accounting without exchange differences.
+    Parameters:
+    - cln_name: Name of the Convertible Loan Note
+    - accrual_date: Date to post the interest accrual (defaults to today if not provided)
+    - exchange_rate: Exchange rate to use for multi-currency (optional)
     """
     cln = frappe.get_doc("Convertible Loan Note", cln_name)
     
@@ -367,93 +368,117 @@ def accrue_cln_interest(cln_name):
     if not cln.company:
         frappe.throw(_("Please specify Company"))
     
+    # Use user-provided accrual date or default to today
+    end_date = accrual_date or frappe.utils.today()
+    
+    # Validate accrual date
+    end_datetime = getdate(end_date)
+    
     # Calculate interest from last accrual date or issue date
     start_date = cln.last_interest_accrual_date or cln.issue_date
-    end_date = frappe.utils.today()
-    
-    start_datetime = frappe.utils.getdate(start_date)
-    end_datetime = frappe.utils.getdate(end_date)
+    start_datetime = getdate(start_date)
     
     if start_datetime >= end_datetime:
-        frappe.throw(_("No interest to accrue. Last accrual date is current or in the future"))
+        frappe.throw(_("Accrual date must be after the last accrual date ({0})").format(start_date))
     
     # Calculate days
     days_difference = (end_datetime - start_datetime).days
     
-    # Calculate interest IN LOAN CURRENCY
+    # Calculate interest in loan currency
     if cln.interest_calculation_method == "Simple":
-        interest_loan_currency = (cln.principal_amount * cln.interest_rate * days_difference) / (100 * 365)
+        interest = (cln.principal_amount * cln.interest_rate * days_difference) / (100 * 365)
     else:
         # Compound interest - yearly compounding
         years = days_difference / 365
-        interest_loan_currency = cln.principal_amount * ((1 + cln.interest_rate/100) ** years - 1)
+        interest = cln.principal_amount * ((1 + cln.interest_rate/100) ** years - 1)
     
-    if interest_loan_currency <= 0:
+    interest = flt(interest, 2)  # Round to 2 decimal places
+    
+    if interest <= 0:
         frappe.throw(_("Calculated interest is zero or negative"))
     
     # Get currencies
     loan_currency = cln.loan_currency or "USD"
     company_currency = frappe.get_cached_value("Company", cln.company, "default_currency")
     
+    # Use user-provided exchange rate or get from CLN or fetch current rate
+    if exchange_rate:
+        final_exchange_rate = flt(exchange_rate, 6)
+    elif cln.exchange_rate_cln:
+        final_exchange_rate = flt(cln.exchange_rate_cln, 6)
+    elif loan_currency != company_currency:
+        final_exchange_rate = flt(get_exchange_rate(loan_currency, company_currency, end_date), 6)
+    else:
+        final_exchange_rate = 1.0
+    
+    # Calculate interest in base currency
+    interest_base = flt(interest * final_exchange_rate, 2)
+    
+    # Determine interest payable account
+    interest_payable_account = cln.interest_payable_account or cln.loan_liability_account
+    
     # Get account currencies
-    expense_account_currency = frappe.get_cached_value("Account", cln.interest_expense_account, "account_currency")
-    interest_account = cln.interest_payable_account or cln.loan_liability_account
-    payable_account_currency = frappe.get_cached_value("Account", interest_account, "account_currency")
+    interest_expense_account_currency = frappe.get_cached_value("Account", cln.interest_expense_account, "account_currency")
+    interest_payable_account_currency = frappe.get_cached_value("Account", interest_payable_account, "account_currency")
     
-    # Use expense account currency if set, otherwise use company currency
-    expense_currency = expense_account_currency or company_currency
-    # Use payable account currency if set, otherwise use loan currency
-    payable_currency = payable_account_currency or loan_currency
-    
-    # Get current exchange rate for this accrual period
-    current_exchange_rate = get_exchange_rate(loan_currency, company_currency, end_date)
-    
-    # Convert interest to company currency for base amount
-    interest_company_currency = interest_loan_currency * current_exchange_rate
-    
-    # Calculate amounts in respective account currencies
-    # For expense account (usually company currency)
-    expense_exchange_rate = get_exchange_rate(company_currency, expense_currency, end_date)
-    interest_expense_amount = interest_company_currency * expense_exchange_rate
-    
-    # For payable account (usually loan currency)
-    payable_exchange_rate = get_exchange_rate(loan_currency, payable_currency, end_date)
-    interest_payable_amount = interest_loan_currency * payable_exchange_rate
-    
-    # Create Journal Entry with proper exchange rates
+    # Build accounts list
     accounts = []
     
-    # Dr: Interest Expense (in expense account currency, typically company currency)
-    # This account picks up the full converted amount to balance the entry
-    expense_entry = {
-        "account": cln.interest_expense_account,
-        "debit_in_account_currency": interest_expense_amount,
-        "account_currency": expense_currency,
-        "exchange_rate": 1.0 if expense_currency == company_currency else get_exchange_rate(expense_currency, company_currency, end_date),
-        "company": cln.company,
-        "against_account": interest_account
-    }
-    # Set base debit amount
-    expense_entry["debit"] = interest_company_currency
-    accounts.append(expense_entry)
+    # Dr: Interest Expense (increasing expense)
+    if interest_expense_account_currency == company_currency or not interest_expense_account_currency:
+        # Interest Expense in company currency
+        accounts.append({
+            "account": cln.interest_expense_account,
+            "debit_in_account_currency": interest_base,
+            "account_currency": company_currency,
+            "exchange_rate": 1.0,
+            "reference_type": "Convertible Loan Note",
+            "reference_name": cln.name,
+            "company": cln.company,
+            "against_account": interest_payable_account
+        })
+    else:
+        # Interest Expense in loan currency (rare case)
+        accounts.append({
+            "account": cln.interest_expense_account,
+            "debit_in_account_currency": interest,
+            "account_currency": loan_currency,
+            "exchange_rate": final_exchange_rate,
+            "reference_type": "Convertible Loan Note",
+            "reference_name": cln.name,
+            "company": cln.company,
+            "against_account": interest_payable_account
+        })
     
-    # Cr: Interest Payable/Loan Liability (in payable account currency, typically loan currency)
-    # This maintains the liability in the original loan currency
-    payable_entry = {
-        "account": interest_account,
-        "credit_in_account_currency": interest_payable_amount,
-        "account_currency": payable_currency,
-        "exchange_rate": current_exchange_rate if payable_currency != company_currency else 1.0,
-        "party_type": "Shareholder",
-        "party": cln.lender,
-        # "reference_type": "Convertible Loan Note",
-        # "reference_name": cln.name,
-        "company": cln.company,
-        "against_account": cln.interest_expense_account
-    }
-    # Set base credit amount
-    payable_entry["credit"] = interest_company_currency
-    accounts.append(payable_entry)
+    # Cr: Interest Payable/Loan Liability (increasing liability)
+    if interest_payable_account_currency == loan_currency or (loan_currency != company_currency):
+        # Interest Payable in loan currency (most common)
+        accounts.append({
+            "account": interest_payable_account,
+            "credit_in_account_currency": interest,
+            "account_currency": loan_currency,
+            "exchange_rate": final_exchange_rate,
+            "party_type": "Shareholder",
+            "party": cln.lender,
+            "reference_type": "Convertible Loan Note",
+            "reference_name": cln.name,
+            "company": cln.company,
+            "against_account": cln.interest_expense_account
+        })
+    else:
+        # Interest Payable in company currency
+        accounts.append({
+            "account": interest_payable_account,
+            "credit_in_account_currency": interest_base,
+            "account_currency": company_currency,
+            "exchange_rate": 1.0,
+            "party_type": "Shareholder",
+            "party": cln.lender,
+            # "reference_type": "Convertible Loan Note",
+            # "reference_name": cln.name,
+            "company": cln.company,
+            "against_account": cln.interest_expense_account
+        })
     
     # Create Journal Entry
     je = frappe.get_doc({
@@ -462,61 +487,90 @@ def accrue_cln_interest(cln_name):
         "posting_date": end_date,
         "company": cln.company,
         "multi_currency": 1 if loan_currency != company_currency else 0,
-        "user_remark": "Interest accrual for CLN {0} from {1} to {2} ({3} {4} @ rate {5})".format(
-            cln.name, start_date, end_date, 
-            frappe.utils.fmt_money(interest_loan_currency, currency=loan_currency),
-            loan_currency,
-            frappe.utils.fmt_money(current_exchange_rate, precision=4)
+        "user_remark": "Interest accrual for CLN {0} from {1} to {2} ({3} days at {4}%)".format(
+            cln.name, start_date, end_date, days_difference, cln.interest_rate
         ),
         "accounts": accounts
     })
     
     je.insert(ignore_permissions=True)
+    je.submit()
     
-    # Validate that the entry balances before submitting
-    try:
-        je.submit()
-    except Exception as e:
-        frappe.log_error(
-            title="Interest Accrual JE Submission Failed",
-            message=f"CLN: {cln_name}\nError: {str(e)}\nInterest (loan): {interest_loan_currency}\nInterest (company): {interest_company_currency}\nExpense: {interest_expense_amount} {expense_currency}\nPayable: {interest_payable_amount} {payable_currency}"
+    # Update CLN with new accrued interest
+    new_total_accrued = flt((cln.accrued_interest or 0) + interest, 2)
+    
+    # Get the CLN doc again to add child table row
+    cln_doc = frappe.get_doc("Convertible Loan Note", cln.name)
+    cln_doc.accrued_interest = new_total_accrued
+    cln_doc.last_interest_accrual_date = end_date
+    
+    # Add entry to interest accrual history child table
+    cln_doc.append("interest_accruals", {
+        "accrual_date": end_date,
+        "from_date": start_date,
+        "to_date": end_date,
+        "days": days_difference,
+        "interest_amount": interest,
+        "exchange_rate": final_exchange_rate,
+        "interest_amount_base": interest_base,
+        "journal_entry": je.name,
+        "cumulative_interest": new_total_accrued,
+        "currency": loan_currency,
+        "remarks": "Interest rate: {0}%, Method: {1}".format(
+            cln.interest_rate,
+            cln.interest_calculation_method or "Simple"
         )
-        frappe.throw(_("Failed to submit Journal Entry. Please check Error Log for details."))
-    
-    # Update CLN - store interest in loan currency
-    new_accrued_interest = (cln.accrued_interest or 0) + interest_loan_currency
-    
-    frappe.db.set_value("Convertible Loan Note", cln.name, {
-        "accrued_interest": new_accrued_interest,
-        "last_interest_accrual_date": end_date,
-        "exchange_rate_cln": current_exchange_rate  # Update to latest rate
     })
+    
+    # Calculate total from table for verification
+    total_from_table = sum([flt(row.interest_amount) for row in cln_doc.interest_accruals])
+    cln_doc.total_accrued_from_table = total_from_table
+    
+    # Add dynamic link (if dynamic links are set up)
+    try:
+        cln_doc.add_link("Journal Entry", je.name, autosave=False)
+    except:
+        # If dynamic links not set up, continue
+        pass
+    
+    cln_doc.flags.ignore_validate = True
+    cln_doc.flags.ignore_mandatory = True
+    cln_doc.save(ignore_permissions=True)
     
     frappe.db.commit()
     
-    frappe.msgprint(_(
-        "Interest accrued successfully:<br>"
-        "• Amount: {0} {1}<br>"
-        "• Exchange Rate: {2}<br>"
-        "• Base Amount: {3} {4}<br>"
-        "• Journal Entry: {5}"
-    ).format(
-        frappe.utils.fmt_money(interest_loan_currency, precision=2),
+    frappe.msgprint(_("""Interest accrued successfully!
+        <br><br>
+        <b>Period:</b> {0} to {1} ({2} days)<br>
+        <b>Interest Amount ({3}):</b> {4}<br>
+        <b>Interest Amount ({5}):</b> {6}<br>
+        <b>Exchange Rate Used:</b> {7}<br>
+        <b>Journal Entry:</b> {8}<br>
+        <b>Total Accrued Interest:</b> {9}<br>
+        <b>Number of Accruals:</b> {10}
+    """).format(
+        start_date, 
+        end_date,
+        days_difference,
         loan_currency,
-        frappe.utils.fmt_money(current_exchange_rate, precision=4),
-        frappe.utils.fmt_money(interest_company_currency, precision=2),
+        frappe.utils.fmt_money(interest, currency=loan_currency),
         company_currency,
-        je.name
+        frappe.utils.fmt_money(interest_base, currency=company_currency),
+        final_exchange_rate,
+        je.name,
+        frappe.utils.fmt_money(new_total_accrued, currency=loan_currency),
+        len(cln_doc.interest_accruals)
     ))
     
     return {
         "journal_entry": je.name,
-        "interest_amount": interest_loan_currency,
-        "interest_amount_base": interest_company_currency,
-        "exchange_rate": current_exchange_rate,
-        "total_accrued": new_accrued_interest,
-        "loan_currency": loan_currency,
-        "company_currency": company_currency
+        "interest_amount": interest,
+        "interest_amount_base": interest_base,
+        "total_accrued": new_total_accrued,
+        "accrual_date": end_date,
+        "exchange_rate_used": final_exchange_rate,
+        "days_accrued": days_difference,
+        "accrual_count": len(cln_doc.interest_accruals)
     }
 
 
@@ -529,12 +583,11 @@ def get_exchange_rate(from_currency, to_currency, transaction_date):
     
     try:
         exchange_rate = erpnext_exchange_rate(from_currency, to_currency, transaction_date)
-        return flt(exchange_rate)
+        return flt(exchange_rate, 6)
     except:
-        frappe.throw(_("Exchange rate not found for {0} to {1} on {2}. Please create a Currency Exchange record").format(
+        frappe.throw(_("Exchange rate not found for {0} to {1} on {2}. Please provide exchange_rate parameter or create a Currency Exchange record").format(
             from_currency, to_currency, transaction_date
         ))
-
 
 @frappe.whitelist()
 def convert_cln_to_shares(cln_name, next_round_price=None, fully_diluted_shares=None):
@@ -835,3 +888,4 @@ def get_share_register(company, as_on_date=None, share_class=None):
         row.ownership_percentage = (row.current_holding / total_shares * 100) if total_shares > 0 else 0
     
     return data
+
