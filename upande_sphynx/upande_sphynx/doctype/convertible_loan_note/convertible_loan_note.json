@@ -24,6 +24,7 @@
   "column_break_cln_2",
   "interest_payment_frequency",
   "accrued_interest",
+  "total_accrued_from_table",
   "last_interest_accrual_date",
   "conversion_terms_section",
   "conversion_trigger",
@@ -62,7 +63,8 @@
   "status",
   "disbursement_journal_entry_ref",
   "share_transfer_ref",
-  "conversion_journal_entry_ref"
+  "conversion_journal_entry_ref",
+  "interest_accruals"
  ],
  "fields": [
   {
@@ -146,6 +148,7 @@
    "options": "Monthly\nQuarterly\nAnnually\nAt Maturity\nCapitalized"
   },
   {
+   "allow_on_submit": 1,
    "default": "0",
    "fieldname": "accrued_interest",
    "fieldtype": "Currency",
@@ -153,6 +156,7 @@
    "read_only": 1
   },
   {
+   "allow_on_submit": 1,
    "fieldname": "last_interest_accrual_date",
    "fieldtype": "Date",
    "label": "Last Interest Accrual Date",
@@ -414,13 +418,29 @@
    "label": "Exchange Rate (To Base Currency)",
    "precision": "9",
    "reqd": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "total_accrued_from_table",
+   "fieldtype": "Currency",
+   "hidden": 1,
+   "label": "Total Accrued ",
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "interest_accruals",
+   "fieldtype": "Table",
+   "label": "Interest Accruals",
+   "options": "CLN Interest Accrual",
+   "read_only": 1
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-01-23 21:48:34.371609",
+ "modified": "2026-02-10 21:23:42.114292",
  "modified_by": "Administrator",
  "module": "Upande Sphynx",
  "name": "Convertible Loan Note",
