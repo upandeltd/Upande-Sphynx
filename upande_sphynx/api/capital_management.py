@@ -460,8 +460,8 @@ def accrue_cln_interest(cln_name, accrual_date=None, exchange_rate=None):
             "exchange_rate": final_exchange_rate,
             "party_type": "Shareholder",
             "party": cln.lender,
-            "reference_type": "Convertible Loan Note",
-            "reference_name": cln.name,
+            # "reference_type": "Convertible Loan Note",
+            # "reference_name": cln.name,
             "company": cln.company,
             "against_account": cln.interest_expense_account
         })
