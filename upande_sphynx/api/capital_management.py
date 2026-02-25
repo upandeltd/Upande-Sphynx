@@ -432,8 +432,8 @@ def accrue_cln_interest(cln_name, accrual_date=None, exchange_rate=None):
             "debit_in_account_currency": interest_base,
             "account_currency": company_currency,
             "exchange_rate": 1.0,
-            "reference_type": "Convertible Loan Note",
-            "reference_name": cln.name,
+            # "reference_type": "Convertible Loan Note",
+            # "reference_name": cln.name,
             "company": cln.company,
             "against_account": interest_payable_account
         })
@@ -444,8 +444,8 @@ def accrue_cln_interest(cln_name, accrual_date=None, exchange_rate=None):
             "debit_in_account_currency": interest,
             "account_currency": loan_currency,
             "exchange_rate": final_exchange_rate,
-            "reference_type": "Convertible Loan Note",
-            "reference_name": cln.name,
+            # "reference_type": "Convertible Loan Note",
+            # "reference_name": cln.name,
             "company": cln.company,
             "against_account": interest_payable_account
         })
