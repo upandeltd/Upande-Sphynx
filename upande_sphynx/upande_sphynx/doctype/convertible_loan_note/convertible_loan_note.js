@@ -12,7 +12,7 @@ frappe.ui.form.on('Convertible Loan Note', {
         
         // Just add a helpful message
         if (frm.doc.docstatus === 1 && frm.doc.status !== 'Cancelled') {
-            frm.page.set_indicator(__('Active - Use Cancel button to cancel all linked documents'), 'blue');
+            frm.page.set_indicator(__('Active'), 'blue');
         }
         
         // Add Delete button for cancelled documents
