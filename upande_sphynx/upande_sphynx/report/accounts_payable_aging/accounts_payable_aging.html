@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Accounts Payable Aging Report</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:        #f4f3ef;
+    --surface:   #ffffff;
+    --border:    #e2dfd8;
+    --text:      #1c1b19;
+    --muted:     #7a7870;
+    --accent:    #c84b31;
+    --accent2:   #2a6049;
+    --mono:      'IBM Plex Mono', monospace;
+    --sans:      'IBM Plex Sans', sans-serif;
+
+    --bucket0:   #eafaf1; --bucket0t: #1e6b3a;
+    --bucket1:   #fef9e7; --bucket1t: #8a6d00;
+    --bucket2:   #fff3e8; --bucket2t: #a04000;
+    --bucket3:   #fde8e8; --bucket3t: #a02020;
+    --bucket4:   #f2ecf8; --bucket4t: #5a2d82;
+  }
+
+  body {
+    font-family: var(--sans);
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 32px 24px 64px;
+  }
+
+  /* ── Header ── */
+  .report-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    margin-bottom: 28px;
+    flex-wrap: wrap;
+    gap: 16px;
+  }
+  .report-title {
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: -0.3px;
+    color: var(--text);
+  }
+  .report-subtitle {
+    font-size: 13px;
+    color: var(--muted);
+    margin-top: 3px;
+    font-weight: 400;
+  }
+  .report-meta {
+    text-align: right;
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.7;
+    font-family: var(--mono);
+  }
+
+  /* ── KPI strip ── */
+  .kpi-strip {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+  .kpi-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+    position: relative;
+    overflow: hidden;
+  }
+  .kpi-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+  }
+  .kpi-card:nth-child(1)::before { background: var(--bucket0t); }
+  .kpi-card:nth-child(2)::before { background: var(--bucket1t); }
+  .kpi-card:nth-child(3)::before { background: var(--bucket2t); }
+  .kpi-card:nth-child(4)::before { background: var(--bucket3t); }
+  .kpi-card:nth-child(5)::before { background: var(--bucket4t); }
+
+  .kpi-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    font-weight: 500;
+    margin-bottom: 6px;
+  }
+  .kpi-value {
+    font-family: var(--mono);
+    font-size: 17px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .kpi-sub {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 4px;
+  }
+
+  /* ── Chart ── */
+  .chart-wrap {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px 24px 12px;
+    margin-bottom: 20px;
+  }
+  .chart-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    margin-bottom: 16px;
+  }
+  .bar-chart {
+    display: flex;
+    align-items: flex-end;
+    gap: 14px;
+    height: 140px;
+  }
+  .bar-group {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    height: 100%;
+    justify-content: flex-end;
+  }
+  .bar-amount {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    text-align: center;
+    white-space: nowrap;
+  }
+  .bar {
+    width: 100%;
+    border-radius: 4px 4px 0 0;
+    transition: opacity 0.15s;
+    cursor: default;
+  }
+  .bar:hover { opacity: 0.8; }
+  .bar-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--muted);
+    font-family: var(--mono);
+    text-align: center;
+  }
+
+  /* ── Table ── */
+  .table-wrap {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .table-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .table-toolbar-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .table-toolbar-count {
+    font-size: 12px;
+    color: var(--muted);
+    font-family: var(--mono);
+  }
+  .filter-tags { display: flex; gap: 8px; flex-wrap: wrap; }
+  .filter-tag {
+    font-size: 11px;
+    padding: 3px 10px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    color: var(--muted);
+    font-family: var(--mono);
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  thead th {
+    background: #faf9f7;
+    padding: 10px 12px;
+    text-align: left;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: var(--muted);
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+  thead th.num { text-align: right; }
+  tbody tr { border-bottom: 1px solid #f0ede8; transition: background 0.1s; }
+  tbody tr:hover { background: #faf9f7; }
+  tbody tr:last-child { border-bottom: none; }
+  td {
+    padding: 9px 12px;
+    color: var(--text);
+    vertical-align: middle;
+  }
+  td.num {
+    text-align: right;
+    font-family: var(--mono);
+    font-size: 12.5px;
+  }
+  td.muted { color: var(--muted); font-size: 12px; }
+  td.supplier-name { font-weight: 500; }
+
+  /* totals row */
+  tr.totals-row td {
+    background: #f4f3ef;
+    font-weight: 600;
+    font-family: var(--mono);
+    font-size: 12.5px;
+    border-top: 2px solid var(--border);
+    color: var(--text);
+  }
+  tr.totals-row td:first-child { font-family: var(--sans); font-size: 13px; }
+
+  /* Badges */
+  .badge {
+    display: inline-block;
+    padding: 2px 9px;
+    border-radius: 20px;
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+  .badge-overdue  { background: #fde8e8; color: #a02020; border: 1px solid #f5b7b1; }
+  .badge-current  { background: #eafaf1; color: #1e6b3a; border: 1px solid #a9dfbf; }
+  .bucket-pill {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    font-family: var(--mono);
+  }
+  .bp0 { background: var(--bucket0); color: var(--bucket0t); }
+  .bp1 { background: var(--bucket1); color: var(--bucket1t); }
+  .bp2 { background: var(--bucket2); color: var(--bucket2t); }
+  .bp3 { background: var(--bucket3); color: var(--bucket3t); }
+  .bp4 { background: var(--bucket4); color: var(--bucket4t); }
+
+  /* Footer */
+  .report-footer {
+    margin-top: 20px;
+    font-size: 11px;
+    color: var(--muted);
+    text-align: right;
+    font-family: var(--mono);
+  }
+
+  @media (max-width: 900px) {
+    .kpi-strip { grid-template-columns: repeat(3, 1fr); }
+    .table-wrap { overflow-x: auto; }
+    table { min-width: 1000px; }
+  }
+  @media (max-width: 600px) {
+    .kpi-strip { grid-template-columns: 1fr 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ── HEADER ─────────────────────────────────────────────── -->
+<div class="report-header">
+  <div>
+    <div class="report-title">Accounts Payable Aging</div>
+    <div class="report-subtitle">Acme Corporation Ltd — as of <strong id="as-of-date"></strong></div>
+  </div>
+  <div class="report-meta">
+    <div>Generated: <span id="gen-date"></span></div>
+    <div>Currency: KES</div>
+    <div>Aging based on: Due Date</div>
+  </div>
+</div>
+
+<!-- ── KPI STRIP ───────────────────────────────────────────── -->
+<div class="kpi-strip" id="kpi-strip"></div>
+
+<!-- ── BAR CHART ──────────────────────────────────────────── -->
+<div class="chart-wrap">
+  <div class="chart-title">Outstanding by Aging Bucket (KES)</div>
+  <div class="bar-chart" id="bar-chart"></div>
+</div>
+
+<!-- ── TABLE ──────────────────────────────────────────────── -->
+<div class="table-wrap">
+  <div class="table-toolbar">
+    <span class="table-toolbar-title">Invoice Detail</span>
+    <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;">
+      <div class="filter-tags">
+        <span class="filter-tag">All Suppliers</span>
+        <span class="filter-tag">All Accounts</span>
+      </div>
+      <span class="table-toolbar-count" id="row-count"></span>
+    </div>
+  </div>
+  <table id="ap-table">
+    <thead>
+      <tr>
+        <th>Supplier</th>
+        <th>Voucher No</th>
+        <th>Posting Date</th>
+        <th>Due Date</th>
+        <th>CCY</th>
+        <th class="num">Invoiced</th>
+        <th class="num">Paid</th>
+        <th class="num">Outstanding</th>
+        <th>Status</th>
+        <th class="num">Days</th>
+        <th>Bucket</th>
+        <th class="num">0–30</th>
+        <th class="num">31–60</th>
+        <th class="num">61–90</th>
+        <th class="num">91–120</th>
+        <th class="num">121+</th>
+      </tr>
+    </thead>
+    <tbody id="ap-tbody"></tbody>
+  </table>
+</div>
+
+<div class="report-footer">Accounts Payable Aging Report · Confidential · <span id="footer-date"></span></div>
+
+<script>
+// ── MOCK DATA ─────────────────────────────────────────────────────────────────
+const CURRENCY = "KES";
+const SYMBOL   = "KES";
+
+const rows = [
+  { supplier:"Nairobi Supply Co.",  voucher:"SINV-2024-00412", posting:"2025-09-10", due:"2025-10-10", invoiced:320000,  paid:80000,  outstanding:240000,  status:"Current",  age:0   },
+  { supplier:"Nairobi Supply Co.",  voucher:"SINV-2024-00378", posting:"2025-07-01", due:"2025-07-31", invoiced:180000,  paid:180000, outstanding:0,       status:"Current",  age:0   },
+  { supplier:"Eastlands Traders",   voucher:"SINV-2024-00390", posting:"2025-08-15", due:"2025-09-14", invoiced:95000,   paid:0,      outstanding:95000,   status:"Overdue",  age:38  },
+  { supplier:"Eastlands Traders",   voucher:"SINV-2024-00401", posting:"2025-08-28", due:"2025-09-27", invoiced:42500,   paid:10000,  outstanding:32500,   status:"Overdue",  age:25  },
+  { supplier:"Mombasa Freight Ltd", voucher:"SINV-2024-00355", posting:"2025-06-10", due:"2025-07-10", invoiced:510000,  paid:150000, outstanding:360000,  status:"Overdue",  age:83  },
+  { supplier:"Mombasa Freight Ltd", voucher:"SINV-2024-00366", posting:"2025-07-22", due:"2025-08-21", invoiced:78000,   paid:78000,  outstanding:0,       status:"Overdue",  age:51  },
+  { supplier:"Rift Valley Farms",   voucher:"SINV-2024-00302", posting:"2025-04-05", due:"2025-05-05", invoiced:215000,  paid:50000,  outstanding:165000,  status:"Overdue",  age:148 },
+  { supplier:"Rift Valley Farms",   voucher:"SINV-2024-00341", posting:"2025-05-20", due:"2025-06-19", invoiced:88000,   paid:0,      outstanding:88000,   status:"Overdue",  age:104 },
+  { supplier:"TechParts Kenya",     voucher:"SINV-2024-00420", posting:"2025-09-25", due:"2025-10-25", invoiced:430000,  paid:0,      outstanding:430000,  status:"Current",  age:0   },
+  { supplier:"TechParts Kenya",     voucher:"SINV-2024-00398", posting:"2025-08-10", due:"2025-09-09", invoiced:67000,   paid:30000,  outstanding:37000,   status:"Overdue",  age:53  },
+  { supplier:"Sigma Chemicals",     voucher:"SINV-2024-00315", posting:"2025-05-01", due:"2025-05-31", invoiced:750000,  paid:400000, outstanding:350000,  status:"Overdue",  age:123 },
+  { supplier:"Sigma Chemicals",     voucher:"SINV-2024-00330", posting:"2025-05-15", due:"2025-06-14", invoiced:120000,  paid:120000, outstanding:0,       status:"Overdue",  age:109 },
+];
+
+// Filter out zero-outstanding
+const data = rows.filter(r => r.outstanding > 0);
+
+// Assign bucket
+function getBucket(age) {
+  if (age <= 30)  return { label:"0–30",   cls:"bp0", idx:0 };
+  if (age <= 60)  return { label:"31–60",  cls:"bp1", idx:1 };
+  if (age <= 90)  return { label:"61–90",  cls:"bp2", idx:2 };
+  if (age <= 120) return { label:"91–120", cls:"bp3", idx:3 };
+  return            { label:"121+",  cls:"bp4", idx:4 };
+}
+
+// ── DATES ─────────────────────────────────────────────────────────────────────
+const today = new Date();
+const fmt = d => d.toLocaleDateString("en-GB", { day:"2-digit", month:"short", year:"numeric" });
+document.getElementById("as-of-date").textContent  = fmt(today);
+document.getElementById("gen-date").textContent    = fmt(today);
+document.getElementById("footer-date").textContent = fmt(today);
+
+// ── CURRENCY FORMAT ───────────────────────────────────────────────────────────
+function fmtCcy(v) {
+  if (v === 0) return "—";
+  return SYMBOL + " " + Number(v).toLocaleString("en-US", { minimumFractionDigits:2, maximumFractionDigits:2 });
+}
+function fmtNum(v) {
+  return Number(v).toLocaleString("en-US", { minimumFractionDigits:2, maximumFractionDigits:2 });
+}
+
+// ── KPI TOTALS ────────────────────────────────────────────────────────────────
+const bucketTotals = [0, 0, 0, 0, 0];
+data.forEach(r => {
+  const b = getBucket(r.age);
+  bucketTotals[b.idx] += r.outstanding;
+});
+const totalOutstanding = bucketTotals.reduce((a,b) => a+b, 0);
+
+const kpiLabels = ["0–30 Days", "31–60 Days", "61–90 Days", "91–120 Days", "121+ Days"];
+const kpiStrip = document.getElementById("kpi-strip");
+kpiLabels.forEach((lbl, i) => {
+  const pct = totalOutstanding ? ((bucketTotals[i]/totalOutstanding)*100).toFixed(1) : "0.0";
+  kpiStrip.innerHTML += `
+    <div class="kpi-card">
+      <div class="kpi-label">${lbl}</div>
+      <div class="kpi-value">${fmtNum(bucketTotals[i])}</div>
+      <div class="kpi-sub">${pct}% of total · ${CURRENCY}</div>
+    </div>`;
+});
+
+// ── BAR CHART ─────────────────────────────────────────────────────────────────
+const maxVal = Math.max(...bucketTotals, 1);
+const barColors = ["#27ae60","#f39c12","#e67e22","#e74c3c","#8e44ad"];
+const barChart  = document.getElementById("bar-chart");
+bucketTotals.forEach((val, i) => {
+  const heightPct = (val / maxVal) * 100;
+  barChart.innerHTML += `
+    <div class="bar-group">
+      <div class="bar-amount">${SYMBOL}&nbsp;${fmtNum(val)}</div>
+      <div class="bar" style="height:${heightPct}%;background:${barColors[i]};" title="${kpiLabels[i]}: ${SYMBOL} ${fmtNum(val)}"></div>
+      <div class="bar-label">${kpiLabels[i].replace(" Days","")}</div>
+    </div>`;
+});
+
+// ── TABLE ─────────────────────────────────────────────────────────────────────
+const tbody = document.getElementById("ap-tbody");
+let totInvoiced=0, totPaid=0, totOut=0;
+const rangeTotals=[0,0,0,0,0];
+
+data.forEach(r => {
+  const b   = getBucket(r.age);
+  const rv  = [0,0,0,0,0]; rv[b.idx] = r.outstanding;
+  totInvoiced += r.invoiced;
+  totPaid     += r.paid;
+  totOut      += r.outstanding;
+  rv.forEach((v,i) => rangeTotals[i] += v);
+
+  tbody.innerHTML += `<tr>
+    <td class="supplier-name">${r.supplier}</td>
+    <td class="muted">${r.voucher}</td>
+    <td class="muted">${r.posting}</td>
+    <td class="muted">${r.due}</td>
+    <td class="muted" style="font-family:var(--mono);font-size:11px;">${CURRENCY}</td>
+    <td class="num">${fmtCcy(r.invoiced)}</td>
+    <td class="num">${fmtCcy(r.paid)}</td>
+    <td class="num" style="font-weight:600;">${fmtCcy(r.outstanding)}</td>
+    <td><span class="badge ${r.status==="Overdue"?"badge-overdue":"badge-current"}">${r.status}</span></td>
+    <td class="num">${r.age > 0 ? r.age : "—"}</td>
+    <td><span class="bucket-pill ${b.cls}">${b.label}</span></td>
+    ${rv.map(v => `<td class="num">${v > 0 ? fmtCcy(v) : "—"}</td>`).join("")}
+  </tr>`;
+});
+
+// Totals row
+tbody.innerHTML += `<tr class="totals-row">
+  <td colspan="5">Total Outstanding</td>
+  <td class="num">${fmtCcy(totInvoiced)}</td>
+  <td class="num">${fmtCcy(totPaid)}</td>
+  <td class="num">${fmtCcy(totOut)}</td>
+  <td></td><td></td><td></td>
+  ${rangeTotals.map(v => `<td class="num">${fmtCcy(v)}</td>`).join("")}
+</tr>`;
+
+document.getElementById("row-count").textContent = `${data.length} invoices`;
+</script>
+</body>
+</html>

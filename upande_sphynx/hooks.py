@@ -179,6 +179,27 @@ doc_events = {
 # 		"on_trash": "method"
 # 	}
 # }
+fixtures = [
+    # ── Custom DocTypes ──────────────────────────────────────────────────────
+    {
+        "dt": "DocType",
+        "filters": [
+            ["name", "in", [
+                "Convertible Loan Note",
+                "Share Agreement",
+                "Share Movement",
+            ]]
+        ]
+    },
+
+    # ── Report (already added earlier) ──────────────────────────────────────
+    {
+        "dt": "Report",
+        "filters": [
+            ["name", "in", ["Accounts Payable Aging"]]
+        ]
+    },
+]
 
 # Scheduled Tasks
 # ---------------
