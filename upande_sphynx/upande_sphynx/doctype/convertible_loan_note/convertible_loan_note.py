@@ -46,7 +46,7 @@ class ConvertibleLoanNote(Document):
         self._cached_refs = {
             'disbursement_je': self.disbursement_journal_entry_ref,
             'conversion_je': self.conversion_journal_entry_ref,
-            'share_movement': self.share_movement_ref,
+            'share_movement': self.share_transfer_ref,
             'interest_accruals': []
         }
         
@@ -60,7 +60,7 @@ class ConvertibleLoanNote(Document):
         frappe.db.set_value("Convertible Loan Note", self.name, {
             "disbursement_journal_entry_ref": None,
             "conversion_journal_entry_ref": None,
-            "share_movement_ref": None
+            "share_transfer_ref": None
         }, update_modified=False)
         
         # Clear JE references in child table
@@ -183,8 +183,8 @@ class ConvertibleLoanNote(Document):
         # Get all linked document references
         linked_docs = []
         
-        if self.share_movement_ref:
-            linked_docs.append(("Share Movement", self.share_movement_ref))
+        if self.share_transfer_ref:
+            linked_docs.append(("Share Movement", self.share_transfer_ref))
         
         if self.conversion_journal_entry_ref:
             linked_docs.append(("Journal Entry", self.conversion_journal_entry_ref))
