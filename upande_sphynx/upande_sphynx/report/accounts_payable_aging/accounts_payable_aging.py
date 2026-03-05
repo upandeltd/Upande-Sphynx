@@ -1,10 +1,6 @@
 # Copyright (c) 2026, Jeniffer and contributors
 # For license information, please see license.txt
 
-# Copyright (c) 2024 Upande Sphynx
-# Accounts Payable Aging — Script Report
-# Queries Purchase Invoice directly (not GL Entry) so only real supplier
-# invoices appear, with accurate outstanding amounts as computed by ERPNext.
 
 import frappe
 from frappe import _
