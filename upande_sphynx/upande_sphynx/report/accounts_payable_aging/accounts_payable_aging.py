@@ -1,234 +1,226 @@
 # Copyright (c) 2026, Jeniffer and contributors
 # For license information, please see license.txt
 
-# Copyright (c) 2024
-# Custom Accounts Payable Aging Report
-# License: GNU General Public License v3
+# Copyright (c) 2024 Upande Sphynx
+# Accounts Payable Aging — Script Report
+# Queries Purchase Invoice directly (not GL Entry) so only real supplier
+# invoices appear, with accurate outstanding amounts as computed by ERPNext.
 
 import frappe
 from frappe import _
-from frappe.utils import flt, getdate, nowdate
+from frappe.utils import flt, getdate, nowdate, date_diff
 
 
 def execute(filters=None):
     filters = frappe._dict(filters or {})
-    if not filters.report_date:
-        filters.report_date = nowdate()
 
+    if not filters.from_date:
+        filters.from_date = frappe.defaults.get_user_default("year_start_date") or "2000-01-01"
+    if not filters.to_date:
+        filters.to_date = nowdate()
+
+    validate_filters(filters)
     columns = get_columns()
-    data = get_data(filters)
+    data    = get_data(filters)
     return columns, data
+
+
+def validate_filters(filters):
+    if getdate(filters.from_date) > getdate(filters.to_date):
+        frappe.throw(_("From Date cannot be after To Date"))
 
 
 def get_columns():
     return [
         {
-            "label": _("Supplier"),
+            "label":     _("Supplier"),
             "fieldname": "supplier",
             "fieldtype": "Link",
-            "options": "Supplier",
-            "width": 180,
+            "options":   "Supplier",
+            "width":     190,
         },
         {
-            "label": _("Voucher No"),
-            "fieldname": "voucher_no",
-            "fieldtype": "Dynamic Link",
-            "options": "voucher_type",
-            "width": 160,
+            "label":     _("Invoice No"),
+            "fieldname": "invoice_no",
+            "fieldtype": "Link",
+            "options":   "Purchase Invoice",
+            "width":     160,
         },
         {
-            "label": _("Posting Date"),
+            "label":     _("Posting Date"),
             "fieldname": "posting_date",
             "fieldtype": "Date",
-            "width": 110,
+            "width":     110,
         },
         {
-            "label": _("Due Date"),
+            "label":     _("Due Date"),
             "fieldname": "due_date",
             "fieldtype": "Date",
-            "width": 110,
+            "width":     110,
         },
         {
-            "label": _("Currency"),
+            "label":     _("Currency"),
             "fieldname": "currency",
             "fieldtype": "Link",
-            "options": "Currency",
-            "width": 80,
+            "options":   "Currency",
+            "width":     75,
         },
         {
-            "label": _("Invoiced Amount"),
-            "fieldname": "invoiced",
+            "label":     _("Grand Total"),
+            "fieldname": "grand_total",
             "fieldtype": "Currency",
-            "options": "currency",
-            "width": 140,
+            "options":   "currency",
+            "width":     140,
         },
         {
-            "label": _("Paid Amount"),
-            "fieldname": "paid",
+            "label":     _("Paid Amount"),
+            "fieldname": "paid_amount",
             "fieldtype": "Currency",
-            "options": "currency",
-            "width": 130,
+            "options":   "currency",
+            "width":     130,
         },
         {
-            "label": _("Outstanding"),
-            "fieldname": "outstanding",
+            "label":     _("Outstanding"),
+            "fieldname": "outstanding_amount",
             "fieldtype": "Currency",
-            "options": "currency",
-            "width": 140,
+            "options":   "currency",
+            "width":     140,
         },
         {
-            "label": _("Status"),
+            "label":     _("Status"),
             "fieldname": "status",
             "fieldtype": "Data",
-            "width": 100,
+            "width":     95,
         },
         {
-            "label": _("Age (Days)"),
-            "fieldname": "age",
+            "label":     _("Age (Days)"),
+            "fieldname": "age_days",
             "fieldtype": "Int",
-            "width": 90,
+            "width":     90,
         },
         {
-            "label": _("Aging Bucket"),
+            "label":     _("Aging Bucket"),
             "fieldname": "aging_bucket",
             "fieldtype": "Data",
-            "width": 110,
+            "width":     105,
         },
         {
-            "label": _("0-30"),
+            "label":     _("0-30"),
             "fieldname": "range1",
             "fieldtype": "Currency",
-            "options": "currency",
-            "width": 120,
+            "options":   "currency",
+            "width":     120,
         },
         {
-            "label": _("31-60"),
+            "label":     _("31-60"),
             "fieldname": "range2",
             "fieldtype": "Currency",
-            "options": "currency",
-            "width": 120,
+            "options":   "currency",
+            "width":     120,
         },
         {
-            "label": _("61-90"),
+            "label":     _("61-90"),
             "fieldname": "range3",
             "fieldtype": "Currency",
-            "options": "currency",
-            "width": 120,
+            "options":   "currency",
+            "width":     120,
         },
         {
-            "label": _("91-120"),
+            "label":     _("91-120"),
             "fieldname": "range4",
             "fieldtype": "Currency",
-            "options": "currency",
-            "width": 120,
+            "options":   "currency",
+            "width":     120,
         },
         {
-            "label": _("121+"),
+            "label":     _("121+"),
             "fieldname": "range5",
             "fieldtype": "Currency",
-            "options": "currency",
-            "width": 120,
+            "options":   "currency",
+            "width":     120,
         },
     ]
 
 
 def get_data(filters):
-    report_date = getdate(filters.report_date)
-    company = filters.get("company")
+    from_date    = getdate(filters.from_date)
+    to_date      = getdate(filters.to_date)
+    age_ref_date = to_date   # ageing is calculated as of the To Date
 
-    # ── Build WHERE conditions and values dict together ──────────────────────
-    # IMPORTANT: every %(key)s used in conditions MUST exist in values dict.
-    conditions = ["gle.company = %(company)s"]
+    # ── Build conditions safely ───────────────────────────────────────────────
+    conditions = [
+        "pi.docstatus = 1",                          # submitted invoices only
+        "pi.outstanding_amount > 0.005",             # has a real balance
+        "pi.posting_date BETWEEN %(from_date)s AND %(to_date)s",
+    ]
     values = {
-        "company": company,
-        "report_date": report_date,
+        "from_date": from_date,
+        "to_date":   to_date,
     }
 
-    # Optional: specific payable account
-    party_account = filters.get("party_account")
-    if party_account:
-        conditions.append("gle.account = %(party_account)s")
-        values["party_account"] = party_account  # added to values at same time
+    if filters.get("company"):
+        conditions.append("pi.company = %(company)s")
+        values["company"] = filters.company
 
-    # Optional: one or more suppliers (MultiSelectList arrives as list, possibly with empty strings)
+    if filters.get("party_account"):
+        conditions.append("pi.credit_to = %(party_account)s")
+        values["party_account"] = filters.party_account
+
+    if filters.get("supplier_group"):
+        conditions.append("sup.supplier_group = %(supplier_group)s")
+        values["supplier_group"] = filters.supplier_group
+
+    # party filter — MultiSelectList arrives as list, possibly with empty strings
     party = filters.get("party")
     if isinstance(party, list):
-        party = [p for p in party if p]  # drop empty strings from blank multiselect
+        party = [p for p in party if p]
     if party:
         if isinstance(party, list) and len(party) == 1:
-            conditions.append("gle.party = %(party_single)s")
-            values["party_single"] = party[0]
+            conditions.append("pi.supplier = %(supplier_single)s")
+            values["supplier_single"] = party[0]
         elif isinstance(party, list):
-            conditions.append("gle.party IN %(party)s")
+            conditions.append("pi.supplier IN %(party)s")
             values["party"] = tuple(party)
         else:
-            conditions.append("gle.party = %(party)s")
+            conditions.append("pi.supplier = %(party)s")
             values["party"] = party
 
-    where_clause = " AND ".join(conditions)
+    where = " AND ".join(conditions)
 
-    # ── Main GL query ──────────────────────────────────────────────────────────
-    entries = frappe.db.sql(
+    invoices = frappe.db.sql(
         """
         SELECT
-            gle.party                       AS supplier,
-            gle.voucher_type,
-            gle.voucher_no,
-            gle.posting_date,
-            gle.account_currency            AS currency,
-            SUM(CASE
-                WHEN gle.debit_in_account_currency  > 0
-                THEN gle.debit_in_account_currency  ELSE 0 END) AS debit,
-            SUM(CASE
-                WHEN gle.credit_in_account_currency > 0
-                THEN gle.credit_in_account_currency ELSE 0 END) AS credit
+            pi.name                                        AS invoice_no,
+            pi.supplier,
+            pi.supplier_name,
+            pi.posting_date,
+            pi.due_date,
+            pi.currency,
+            pi.grand_total,
+            pi.outstanding_amount,
+            (pi.grand_total - pi.outstanding_amount)       AS paid_amount
         FROM
-            `tabGL Entry` gle
-            INNER JOIN `tabAccount` acc ON acc.name = gle.account
+            `tabPurchase Invoice` pi
+            LEFT JOIN `tabSupplier` sup ON sup.name = pi.supplier
         WHERE
-            gle.party_type   = 'Supplier'
-            AND gle.posting_date <= %(report_date)s
-            AND gle.is_cancelled  = 0
-            AND acc.account_type  = 'Payable'
-            AND {where_clause}
-        GROUP BY
-            gle.voucher_no, gle.party
-        HAVING
-            (SUM(gle.credit_in_account_currency)
-             - SUM(gle.debit_in_account_currency)) > 0.005
+            {where}
         ORDER BY
-            gle.party, gle.posting_date
-        """.format(where_clause=where_clause),
+            pi.supplier, pi.posting_date
+        """.format(where=where),
         values,
         as_dict=True,
     )
 
-    if not entries:
+    if not invoices:
         return []
 
-    # ── Fetch due dates from Purchase Invoice via get_all (avoids tuple-of-one issues) ──
-    voucher_nos = list({e.voucher_no for e in entries})
-    due_dates = {}
-
-    if voucher_nos:
-        pi_records = frappe.db.get_all(
-            "Purchase Invoice",
-            filters={"name": ["in", voucher_nos]},
-            fields=["name", "due_date"],
-        )
-        for pi in pi_records:
-            due_dates[pi.name] = pi.due_date
-
-    # ── Build output rows ──────────────────────────────────────────────────────
     data = []
-    for entry in entries:
-        outstanding = flt(entry.credit) - flt(entry.debit)
-        if outstanding <= 0.005:
-            continue
+    for inv in invoices:
+        due_date = getdate(inv.due_date or inv.posting_date)
+        age_days = date_diff(age_ref_date, due_date)   # positive = days past due
+        out_amt  = flt(inv.outstanding_amount)
 
-        due_date = getdate(due_dates.get(entry.voucher_no) or entry.posting_date)
-        age_days  = (report_date - due_date).days
-        status    = "Overdue" if age_days > 0 else "Current"
+        status = "Overdue" if age_days > 0 else "Current"
 
         if age_days <= 30:
             bucket = "0-30"
@@ -242,23 +234,22 @@ def get_data(filters):
             bucket = "121+"
 
         data.append({
-            "supplier":     entry.supplier,
-            "voucher_type": entry.voucher_type,
-            "voucher_no":   entry.voucher_no,
-            "posting_date": entry.posting_date,
-            "due_date":     due_date,
-            "currency":     entry.currency,
-            "invoiced":     flt(entry.credit),
-            "paid":         flt(entry.debit),
-            "outstanding":  outstanding,
-            "status":       status,
-            "age":          max(age_days, 0),
-            "aging_bucket": bucket,
-            "range1":       outstanding if age_days <= 30               else 0,
-            "range2":       outstanding if 30  < age_days <= 60         else 0,
-            "range3":       outstanding if 60  < age_days <= 90         else 0,
-            "range4":       outstanding if 90  < age_days <= 120        else 0,
-            "range5":       outstanding if age_days > 120               else 0,
+            "supplier":           inv.supplier,
+            "invoice_no":         inv.invoice_no,
+            "posting_date":       inv.posting_date,
+            "due_date":           due_date,
+            "currency":           inv.currency,
+            "grand_total":        flt(inv.grand_total),
+            "paid_amount":        flt(inv.paid_amount),
+            "outstanding_amount": out_amt,
+            "status":             status,
+            "age_days":           max(age_days, 0),
+            "aging_bucket":       bucket,
+            "range1":             out_amt if age_days <= 30          else 0,
+            "range2":             out_amt if 30  < age_days <= 60    else 0,
+            "range3":             out_amt if 60  < age_days <= 90    else 0,
+            "range4":             out_amt if 90  < age_days <= 120   else 0,
+            "range5":             out_amt if age_days > 120          else 0,
         })
 
     return data
