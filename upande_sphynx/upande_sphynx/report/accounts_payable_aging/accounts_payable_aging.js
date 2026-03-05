@@ -127,64 +127,64 @@ frappe.query_reports["Accounts Payable Aging"] = {
 	},
 
 	// ── Toolbar ───────────────────────────────────────────────────────────────
-	onload: function (report) {
-		inject_ap_styles();
+// 	onload: function (report) {
+// 		inject_ap_styles();
 
-		// Instead of linking to the standard AP Summary (which shows Shareholders
-		// and payment entries), we open the standard report but immediately
-		// patch its "Accounts Payable" back-button to return here.
-		report.page.add_inner_button(__("AP Summary"), function () {
-			const f = report.get_values();
+// 		// Instead of linking to the standard AP Summary (which shows Shareholders
+// 		// and payment entries), we open the standard report but immediately
+// 		// patch its "Accounts Payable" back-button to return here.
+// 		report.page.add_inner_button(__("AP Summary"), function () {
+// 			const f = report.get_values();
 
-			// Store a flag so we can detect we came from here
-			frappe.route_flags = frappe.route_flags || {};
-			frappe.route_flags.ap_aging_origin = true;
+// 			// Store a flag so we can detect we came from here
+// 			frappe.route_flags = frappe.route_flags || {};
+// 			frappe.route_flags.ap_aging_origin = true;
 
-			frappe.set_route("query-report", "Accounts Payable Summary", {
-				company: f.company,
-			});
-		});
-	},
+// 			frappe.set_route("query-report", "Accounts Payable Summary", {
+// 				company: f.company,
+// 			});
+// 		});
+// 	},
 
-	after_datatable_render: function () {
-		inject_ap_styles();
-		patch_ap_summary_back_button();
-	},
-};
+// 	after_datatable_render: function () {
+// 		inject_ap_styles();
+// 		patch_ap_summary_back_button();
+// 	},
+// };
 
-// ── Patch AP Summary back-button ──────────────────────────────────────────────
-// Called after every render. When we are ON the AP Summary page and we
-// arrived from our custom report, replace the "Accounts Payable" toolbar
-// button so it redirects back to "Accounts Payable Aging".
-function patch_ap_summary_back_button() {
-	const route = frappe.get_route();
-	if (!route || route[1] !== "Accounts Payable Summary") return;
-	if (!frappe.route_flags || !frappe.route_flags.ap_aging_origin) return;
+// // ── Patch AP Summary back-button ──────────────────────────────────────────────
+// // Called after every render. When we are ON the AP Summary page and we
+// // arrived from our custom report, replace the "Accounts Payable" toolbar
+// // button so it redirects back to "Accounts Payable Aging".
+// function patch_ap_summary_back_button() {
+// 	const route = frappe.get_route();
+// 	if (!route || route[1] !== "Accounts Payable Summary") return;
+// 	if (!frappe.route_flags || !frappe.route_flags.ap_aging_origin) return;
 
-	// Give the DOM a moment to render the toolbar buttons
-	setTimeout(() => {
-		$(".page-head .inner-toolbar .btn, .page-head .custom-btn-group .btn")
-			.filter(function () {
-				return $(this).text().trim() === __("Accounts Payable");
-			})
-			.each(function () {
-				$(this)
-					.text(__("← AP Aging"))
-					.off("click.ap_patch")
-					.on("click.ap_patch", function (e) {
-						e.preventDefault();
-						frappe.route_flags.ap_aging_origin = false;
-						frappe.set_route("query-report", "Accounts Payable Aging");
-					});
-			});
-	}, 600);
-}
+// 	// Give the DOM a moment to render the toolbar buttons
+// 	setTimeout(() => {
+// 		$(".page-head .inner-toolbar .btn, .page-head .custom-btn-group .btn")
+// 			.filter(function () {
+// 				return $(this).text().trim() === __("Accounts Payable");
+// 			})
+// 			.each(function () {
+// 				$(this)
+// 					.text(__("← AP Aging"))
+// 					.off("click.ap_patch")
+// 					.on("click.ap_patch", function (e) {
+// 						e.preventDefault();
+// 						frappe.route_flags.ap_aging_origin = false;
+// 						frappe.set_route("query-report", "Accounts Payable Aging");
+// 					});
+// 			});
+// 	}, 600);
+// }
 
-// Also run the patch whenever the page renders (catches navigation from
-// AP Summary button in the toolbar)
-$(document).on("page-change", function () {
-	setTimeout(patch_ap_summary_back_button, 700);
-});
+// // Also run the patch whenever the page renders (catches navigation from
+// // AP Summary button in the toolbar)
+// $(document).on("page-change", function () {
+// 	setTimeout(patch_ap_summary_back_button, 700);
+// });
 
 // ── Currency symbol lookup ────────────────────────────────────────────────────
 const SYMBOL_FALLBACK = {
