@@ -127,8 +127,8 @@ frappe.query_reports["Accounts Payable Aging"] = {
 	},
 
 	// ── Toolbar ───────────────────────────────────────────────────────────────
-// 	onload: function (report) {
-// 		inject_ap_styles();
+	onload: function (report) {
+		inject_ap_styles();
 
 // 		// Instead of linking to the standard AP Summary (which shows Shareholders
 // 		// and payment entries), we open the standard report but immediately
@@ -146,11 +146,11 @@ frappe.query_reports["Accounts Payable Aging"] = {
 // 		});
 // 	},
 
-// 	after_datatable_render: function () {
-// 		inject_ap_styles();
-// 		patch_ap_summary_back_button();
-// 	},
-// };
+	after_datatable_render: function () {
+		inject_ap_styles();
+		patch_ap_summary_back_button();
+	},
+};
 
 // // ── Patch AP Summary back-button ──────────────────────────────────────────────
 // // Called after every render. When we are ON the AP Summary page and we
