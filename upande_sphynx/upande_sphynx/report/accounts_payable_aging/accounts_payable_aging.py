@@ -2,6 +2,7 @@
 # For license information, please see license.txt
 
 
+
 import frappe
 from frappe import _
 from frappe.utils import flt, getdate, nowdate, date_diff
@@ -15,17 +16,15 @@ def execute(filters=None):
     if not filters.to_date:
         filters.to_date = nowdate()
 
-    validate_filters(filters)
+    if getdate(filters.from_date) > getdate(filters.to_date):
+        frappe.throw(_("From Date cannot be after To Date"))
+
     columns = get_columns()
     data    = get_data(filters)
     return columns, data
 
 
-def validate_filters(filters):
-    if getdate(filters.from_date) > getdate(filters.to_date):
-        frappe.throw(_("From Date cannot be after To Date"))
-
-
+# ── Columns ───────────────────────────────────────────────────────────────────
 def get_columns():
     return [
         {
@@ -69,18 +68,18 @@ def get_columns():
             "width":     140,
         },
         {
-            "label":     _("Paid Amount"),
+            "label":     _("Paid (as of To Date)"),
             "fieldname": "paid_amount",
             "fieldtype": "Currency",
             "options":   "currency",
-            "width":     130,
+            "width":     150,
         },
         {
-            "label":     _("Outstanding"),
+            "label":     _("Outstanding (as of To Date)"),
             "fieldname": "outstanding_amount",
             "fieldtype": "Currency",
             "options":   "currency",
-            "width":     140,
+            "width":     170,
         },
         {
             "label":     _("Status"),
@@ -138,63 +137,57 @@ def get_columns():
     ]
 
 
+# ── Data ──────────────────────────────────────────────────────────────────────
 def get_data(filters):
     from_date    = getdate(filters.from_date)
     to_date      = getdate(filters.to_date)
-    age_ref_date = to_date   # ageing is calculated as of the To Date
+    age_ref_date = to_date
 
-    # ── Build conditions safely ───────────────────────────────────────────────
-    conditions = [
-        "pi.docstatus = 1",                          # submitted invoices only
-        "pi.outstanding_amount > 0.005",             # has a real balance
+    # ── Step 1: fetch all submitted Purchase Invoices in the date range ───────
+    inv_conditions = [
+        "pi.docstatus = 1",
         "pi.posting_date BETWEEN %(from_date)s AND %(to_date)s",
     ]
-    values = {
+    inv_values = {
         "from_date": from_date,
         "to_date":   to_date,
     }
 
     if filters.get("company"):
-        conditions.append("pi.company = %(company)s")
-        values["company"] = filters.company
+        inv_conditions.append("pi.company = %(company)s")
+        inv_values["company"] = filters.company
 
     if filters.get("party_account"):
-        conditions.append("pi.credit_to = %(party_account)s")
-        values["party_account"] = filters.party_account
+        inv_conditions.append("pi.credit_to = %(party_account)s")
+        inv_values["party_account"] = filters.party_account
 
     if filters.get("supplier_group"):
-        conditions.append("sup.supplier_group = %(supplier_group)s")
-        values["supplier_group"] = filters.supplier_group
+        inv_conditions.append("sup.supplier_group = %(supplier_group)s")
+        inv_values["supplier_group"] = filters.supplier_group
 
-    # party filter — MultiSelectList arrives as list, possibly with empty strings
     party = filters.get("party")
     if isinstance(party, list):
         party = [p for p in party if p]
     if party:
         if isinstance(party, list) and len(party) == 1:
-            conditions.append("pi.supplier = %(supplier_single)s")
-            values["supplier_single"] = party[0]
+            inv_conditions.append("pi.supplier = %(supplier_single)s")
+            inv_values["supplier_single"] = party[0]
         elif isinstance(party, list):
-            conditions.append("pi.supplier IN %(party)s")
-            values["party"] = tuple(party)
+            inv_conditions.append("pi.supplier IN %(party)s")
+            inv_values["party"] = tuple(party)
         else:
-            conditions.append("pi.supplier = %(party)s")
-            values["party"] = party
-
-    where = " AND ".join(conditions)
+            inv_conditions.append("pi.supplier = %(party)s")
+            inv_values["party"] = party
 
     invoices = frappe.db.sql(
         """
         SELECT
-            pi.name                                        AS invoice_no,
+            pi.name          AS invoice_no,
             pi.supplier,
-            pi.supplier_name,
             pi.posting_date,
             pi.due_date,
             pi.currency,
-            pi.grand_total,
-            pi.outstanding_amount,
-            (pi.grand_total - pi.outstanding_amount)       AS paid_amount
+            pi.grand_total
         FROM
             `tabPurchase Invoice` pi
             LEFT JOIN `tabSupplier` sup ON sup.name = pi.supplier
@@ -202,21 +195,69 @@ def get_data(filters):
             {where}
         ORDER BY
             pi.supplier, pi.posting_date
-        """.format(where=where),
-        values,
+        """.format(where=" AND ".join(inv_conditions)),
+        inv_values,
         as_dict=True,
     )
 
     if not invoices:
         return []
 
+    voucher_nos = [inv.invoice_no for inv in invoices]
+
+    # ── Step 2: reconstruct outstanding as of to_date from GL Entry ───────────
+    # For each voucher, sum credits (= invoice postings) and debits
+    # (= payments/credit notes) that occurred on or before to_date.
+    # outstanding_as_of_to_date = credit_total - debit_total
+    gl_rows = frappe.db.sql(
+        """
+        SELECT
+            gle.voucher_no,
+            SUM(CASE WHEN gle.credit_in_account_currency > 0
+                THEN gle.credit_in_account_currency ELSE 0 END) AS total_credit,
+            SUM(CASE WHEN gle.debit_in_account_currency  > 0
+                THEN gle.debit_in_account_currency  ELSE 0 END) AS total_debit
+        FROM `tabGL Entry` gle
+        INNER JOIN `tabAccount` acc ON acc.name = gle.account
+        WHERE
+            gle.voucher_no   IN %(voucher_nos)s
+            AND gle.party_type = 'Supplier'
+            AND gle.is_cancelled = 0
+            AND acc.account_type = 'Payable'
+            AND gle.posting_date <= %(to_date)s
+        GROUP BY gle.voucher_no
+        """,
+        {
+            "voucher_nos": tuple(voucher_nos),
+            "to_date":     to_date,
+        },
+        as_dict=True,
+    )
+
+    # Build a lookup: voucher_no -> outstanding as of to_date
+    gl_map = {}
+    for row in gl_rows:
+        credit = flt(row.total_credit)
+        debit  = flt(row.total_debit)
+        gl_map[row.voucher_no] = {
+            "outstanding": credit - debit,
+            "paid":        debit,
+        }
+
+    # ── Step 3: build report rows ─────────────────────────────────────────────
     data = []
     for inv in invoices:
-        due_date = getdate(inv.due_date or inv.posting_date)
-        age_days = date_diff(age_ref_date, due_date)   # positive = days past due
-        out_amt  = flt(inv.outstanding_amount)
+        gl = gl_map.get(inv.invoice_no, {})
+        out_amt  = flt(gl.get("outstanding", inv.grand_total))
+        paid_amt = flt(gl.get("paid", 0))
 
-        status = "Overdue" if age_days > 0 else "Current"
+        # Skip invoices that were fully settled on or before to_date
+        if out_amt <= 0.005:
+            continue
+
+        due_date = getdate(inv.due_date or inv.posting_date)
+        age_days = date_diff(age_ref_date, due_date)
+        status   = "Overdue" if age_days > 0 else "Current"
 
         if age_days <= 30:
             bucket = "0-30"
@@ -236,16 +277,16 @@ def get_data(filters):
             "due_date":           due_date,
             "currency":           inv.currency,
             "grand_total":        flt(inv.grand_total),
-            "paid_amount":        flt(inv.paid_amount),
+            "paid_amount":        paid_amt,
             "outstanding_amount": out_amt,
             "status":             status,
             "age_days":           max(age_days, 0),
             "aging_bucket":       bucket,
-            "range1":             out_amt if age_days <= 30          else 0,
-            "range2":             out_amt if 30  < age_days <= 60    else 0,
-            "range3":             out_amt if 60  < age_days <= 90    else 0,
-            "range4":             out_amt if 90  < age_days <= 120   else 0,
-            "range5":             out_amt if age_days > 120          else 0,
+            "range1":             out_amt if age_days <= 30        else 0,
+            "range2":             out_amt if 30  < age_days <= 60  else 0,
+            "range3":             out_amt if 60  < age_days <= 90  else 0,
+            "range4":             out_amt if 90  < age_days <= 120 else 0,
+            "range5":             out_amt if age_days > 120        else 0,
         })
 
     return data
