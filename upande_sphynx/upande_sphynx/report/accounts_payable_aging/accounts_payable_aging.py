@@ -34,6 +34,18 @@ def get_columns():
             "options":   "Supplier",
             "width":     190,
         },
+		{
+            "label":     _("Posting Date"),
+            "fieldname": "posting_date",
+            "fieldtype": "Date",
+            "width":     120,
+        },
+        {
+            "label":     _("Due Date"),
+            "fieldname": "due_date",
+            "fieldtype": "Date",
+            "width":     120,
+        },
         {
             "label":     _("Invoice No"),
             "fieldname": "invoice_no",
@@ -41,52 +53,22 @@ def get_columns():
             "options":   "Purchase Invoice",
             "width":     160,
         },
-        {
-            "label":     _("Posting Date"),
-            "fieldname": "posting_date",
-            "fieldtype": "Date",
-            "width":     110,
-        },
-        {
-            "label":     _("Due Date"),
-            "fieldname": "due_date",
-            "fieldtype": "Date",
-            "width":     110,
-        },
-        {
-            "label":     _("Currency"),
-            "fieldname": "currency",
-            "fieldtype": "Link",
-            "options":   "Currency",
-            "width":     75,
-        },
-        {
-            "label":     _("Grand Total"),
-            "fieldname": "grand_total",
-            "fieldtype": "Currency",
-            "options":   "currency",
-            "width":     140,
-        },
-        {
-            "label":     _("Paid (as of To Date)"),
-            "fieldname": "paid_amount",
-            "fieldtype": "Currency",
-            "options":   "currency",
-            "width":     150,
-        },
-        {
-            "label":     _("Outstanding (as of To Date)"),
-            "fieldname": "outstanding_amount",
-            "fieldtype": "Currency",
-            "options":   "currency",
-            "width":     170,
-        },
-        {
+		
+		{
             "label":     _("Status"),
             "fieldname": "status",
             "fieldtype": "Data",
             "width":     95,
         },
+
+        {
+            "label":     _("Outstanding"),
+            "fieldname": "outstanding_amount",
+            "fieldtype": "Currency",
+            "options":   "currency",
+            "width":     170,
+        },
+        
         {
             "label":     _("Age (Days)"),
             "fieldname": "age_days",
