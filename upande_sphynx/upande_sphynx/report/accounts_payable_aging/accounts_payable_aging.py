@@ -75,7 +75,16 @@ def get_columns():
             "fieldtype": "Int",
             "width":     90,
         },
+<<<<<<< HEAD
         
+=======
+        # {
+        #     "label":     _("Aging Bucket"),
+        #     "fieldname": "aging_bucket",
+        #     "fieldtype": "Data",
+        #     "width":     105,
+        # },
+>>>>>>> 3cb5caf96e300471a9d2653fa7ebbdf813379dfd
         {
             "label":     _("0-30"),
             "fieldname": "range1",
