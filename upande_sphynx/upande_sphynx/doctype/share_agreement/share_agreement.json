@@ -54,6 +54,7 @@
   "journal_entry_ref",
   "share_transfer_ref",
   "share_movement_ref",
+  "is_opening_entry",
   "attachments_section",
   "signed_agreement",
   "supporting_documents",
@@ -130,6 +131,7 @@
    "fieldname": "rate_per_share",
    "fieldtype": "Currency",
    "label": "Price per Share",
+   "options": "transaction_currency",
    "reqd": 1
   },
   {
@@ -140,18 +142,21 @@
    "fieldname": "par_value_per_share",
    "fieldtype": "Currency",
    "label": "Par Value per Share",
+   "options": "transaction_currency",
    "reqd": 1
   },
   {
    "fieldname": "total_consideration",
    "fieldtype": "Currency",
    "label": "Total Consideration",
+   "options": "transaction_currency",
    "read_only": 1
   },
   {
    "fieldname": "premium_amount",
    "fieldtype": "Currency",
    "label": "Share Premium Amount",
+   "options": "transaction_currency",
    "read_only": 1
   },
   {
@@ -326,6 +331,14 @@
    "read_only": 1
   },
   {
+   "default": "No",
+   "description": "Opening entries represent share positions migrated from before go-live. No Journal Entry is created for them — the opening balance is already captured in the books' opening balance accounts.",
+   "fieldname": "is_opening_entry",
+   "fieldtype": "Select",
+   "label": "Opening Entry",
+   "options": "No\nYes"
+  },
+  {
    "collapsible": 1,
    "fieldname": "attachments_section",
    "fieldtype": "Section Break",
@@ -360,6 +373,7 @@
    "reqd": 1
   },
   {
+   "depends_on": "eval:doc.transaction_currency != frappe.defaults.get_default('currency')",
    "fieldname": "exchange_rate",
    "fieldtype": "Float",
    "label": "Exchange Rate (to Base Currency)",
@@ -369,7 +383,13 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
- "links": [],
+ "links": [
+  {
+   "group": "Capital Management",
+   "link_doctype": "Share Movement",
+   "link_fieldname": "source_document_name"
+  }
+ ],
  "modified": "2026-01-23 21:35:23.277504",
  "modified_by": "Administrator",
  "module": "Upande Sphynx",

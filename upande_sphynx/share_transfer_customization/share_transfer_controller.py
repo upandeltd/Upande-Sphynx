@@ -135,17 +135,23 @@ def calculate_rate_and_amount(doc, method=None):
     # Calculate total in transaction currency
     if doc.no_of_shares and doc.rate_in_transaction_currency:
         doc.total_amount_in_transaction_currency = flt(doc.no_of_shares) * flt(doc.rate_in_transaction_currency)
-    
+
     # Calculate amount in company currency
     if doc.total_amount_in_transaction_currency and doc.exchange_rate:
         doc.total_amount_in_company_currency = flt(doc.total_amount_in_transaction_currency) * flt(doc.exchange_rate)
-    
-    # Sync with default rate and amount fields (for backward compatibility)
+
+    # Sync with default rate and amount fields (for backward compatibility).
+    # `rate`/`amount` are standard ERPNext fields expected in company currency,
+    # so both are derived by multiplying the transaction-currency value by the
+    # exchange rate.
     if doc.rate_in_transaction_currency:
         doc.rate = flt(doc.rate_in_transaction_currency) * flt(doc.exchange_rate)
-    
+
     if doc.total_amount_in_transaction_currency:
         doc.amount = flt(doc.total_amount_in_transaction_currency) * flt(doc.exchange_rate)
+
+    if not doc.get('total_amount_in_transaction_currency') or flt(doc.total_amount_in_transaction_currency) <= 0:
+        frappe.throw(_("Total amount must be greater than zero"))
 
 
 def validate_accounts(doc, method=None):
@@ -269,59 +275,55 @@ def create_custom_journal_entry(docname):
     cost_center = doc.get('cost_center') or frappe.get_cached_value('Company', doc.company, 'cost_center')
     
     # --- Line 1: Debit Receiving Account (Asset) ---
-    # New shareholder pays money to company
+    # New shareholder pays money to company. Party is the incoming shareholder,
+    # matching what this Journal Entry has always booked in production.
     je.append("accounts", {
         "account": doc.asset_account,
         "debit_in_account_currency": flt(doc.total_amount_in_transaction_currency),
         "credit_in_account_currency": 0,
-        "account_currency": doc.transaction_currency,
-        "exchange_rate": exchange_rate,
-        
-        "cost_center": cost_center,
-        # "reference_type": "Share Transfer",
-        # "reference_name": doc.name,
-        "user_remark": _("Payment received for share transfer")
-    })
-    
-    # --- Line 2: Credit Share Capital Account (Equity/Liability) ---
-    # Company issues shares
-    credit_entry = {
-        "account": doc.equity_or_liability_account,
-        "debit_in_account_currency": 0,
-        "credit_in_account_currency": flt(doc.total_amount_in_transaction_currency),
-        "account_currency": doc.transaction_currency,
-        "exchange_rate": exchange_rate,
         "party_type": "Shareholder",
         "party": doc.to_shareholder,
         "cost_center": cost_center,
-        # "reference_type": "Share Transfer",
-        # "reference_name": doc.name,
+        "account_currency": doc.transaction_currency,
+        "exchange_rate": exchange_rate,
+        "reference_type": "Share Transfer",
+        "reference_name": doc.name,
+        "user_remark": _("Payment received for share transfer")
+    })
+
+    # --- Line 2: Credit Share Capital Account (Equity/Liability) ---
+    # Company issues shares. Party is the outgoing shareholder (blank for a
+    # new issue, since there's no prior holder).
+    je.append("accounts", {
+        "account": doc.equity_or_liability_account,
+        "debit_in_account_currency": 0,
+        "credit_in_account_currency": flt(doc.total_amount_in_transaction_currency),
+        "party_type": "Shareholder" if doc.from_shareholder else None,
+        "party": doc.from_shareholder,
+        "cost_center": cost_center,
+        "account_currency": doc.transaction_currency,
+        "exchange_rate": exchange_rate,
+        "reference_type": "Share Transfer",
+        "reference_name": doc.name,
         "user_remark": _("Share capital for {0} shares").format(doc.no_of_shares)
-    }
-    
-    # Only add party if from_shareholder exists (not for new issue)
-    if doc.from_shareholder:
-        credit_entry["party_type"] = "Shareholder"
-        credit_entry["party"] = doc.from_shareholder
-    
-    je.append("accounts", credit_entry)
-    
+    })
+
     # --- Save and submit JE ---
     try:
         je.flags.ignore_permissions = True
         je.insert()
-        # je.submit()
-        
+        je.submit()
+
         # --- Link JE to Share Transfer ---
         frappe.db.set_value("Share Transfer", doc.name, "custom_journal_entry", je.name)
         frappe.db.commit()
-        
+
         return {
             'status': 'success',
             'journal_entry': je.name,
             'message': _('Journal Entry {0} created successfully').format(je.name)
         }
-        
+
     except Exception as e:
         frappe.log_error(title='Share Transfer JE Creation Failed', message=str(e))
         frappe.throw(_('Failed to create Journal Entry: {0}').format(str(e)))

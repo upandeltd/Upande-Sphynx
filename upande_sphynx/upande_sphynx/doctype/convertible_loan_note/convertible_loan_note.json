@@ -64,6 +64,9 @@
   "disbursement_journal_entry_ref",
   "share_transfer_ref",
   "conversion_journal_entry_ref",
+  "repayment_date",
+  "repayment_journal_entry_ref",
+  "repayment_penalty_amount",
   "interest_accruals"
  ],
  "fields": [
@@ -391,9 +394,9 @@
   {
    "fieldname": "share_transfer_ref",
    "fieldtype": "Link",
-   "label": "Share Transfer Reference",
+   "label": "Share Movement Reference",
    "no_copy": 1,
-   "options": "Share Transfer",
+   "options": "Share Movement",
    "read_only": 1
   },
   {
@@ -405,6 +408,31 @@
    "read_only": 1
   },
   {
+   "allow_on_submit": 1,
+   "fieldname": "repayment_date",
+   "fieldtype": "Date",
+   "label": "Repayment Date",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "repayment_journal_entry_ref",
+   "fieldtype": "Link",
+   "label": "Repayment Journal Entry",
+   "no_copy": 1,
+   "options": "Journal Entry",
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "repayment_penalty_amount",
+   "fieldtype": "Currency",
+   "label": "Early Repayment Penalty Applied",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
    "default": "USD",
    "fieldname": "loan_currency",
    "fieldtype": "Link",
@@ -413,11 +441,11 @@
    "reqd": 1
   },
   {
+   "depends_on": "eval:doc.loan_currency != frappe.defaults.get_default('currency')",
    "fieldname": "exchange_rate",
    "fieldtype": "Float",
    "label": "Exchange Rate (To Base Currency)",
-   "precision": "9",
-   "reqd": 1
+   "precision": "9"
   },
   {
    "allow_on_submit": 1,
@@ -439,7 +467,13 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
- "links": [],
+ "links": [
+  {
+   "group": "Capital Management",
+   "link_doctype": "Share Movement",
+   "link_fieldname": "source_document_name"
+  }
+ ],
  "modified": "2026-02-10 21:23:42.114292",
  "modified_by": "Administrator",
  "module": "Upande Sphynx",

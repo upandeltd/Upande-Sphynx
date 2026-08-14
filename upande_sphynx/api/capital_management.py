@@ -3,6 +3,56 @@ from frappe import _
 from frappe.utils import flt, get_datetime
 
 # ============================================
+# SHAREHOLDER TOTALS
+# ============================================
+
+def recalculate_shareholder_totals(shareholder_name):
+	"""Recompute a Shareholder's Total Shares Held and Total Investment.
+
+	Total Shares Held = shares received (to_shareholder) minus shares given up
+	(from_shareholder, e.g. a buyback) across all submitted Share Movements.
+
+	Total Investment = money paid in via submitted Share Movements (excluding
+	Share Buyback, which returns capital rather than investing it) plus any
+	currently active (unconverted) Convertible Loan Note principal, so a loan
+	counts once as principal while active and is not double-counted after it
+	converts into a Share Movement.
+	"""
+	if not shareholder_name:
+		return
+
+	totals = frappe.db.sql("""
+		SELECT
+			SUM(CASE WHEN to_shareholder = %(shareholder)s THEN number_of_shares ELSE 0 END)
+			- SUM(CASE WHEN from_shareholder = %(shareholder)s THEN number_of_shares ELSE 0 END) AS shares_held,
+			SUM(CASE WHEN to_shareholder = %(shareholder)s AND movement_type != 'Share Buyback'
+				THEN total_amount_base_currency ELSE 0 END) AS shares_investment
+		FROM `tabShare Movement`
+		WHERE docstatus = 1
+		AND (to_shareholder = %(shareholder)s OR from_shareholder = %(shareholder)s)
+	""", {"shareholder": shareholder_name}, as_dict=True)[0]
+
+	active_cln_principal = flt(frappe.db.get_value("Shareholder", shareholder_name, "custom_total_cln_amount"))
+
+	frappe.db.set_value("Shareholder", shareholder_name, {
+		"custom_total_shares_held": flt(totals.shares_held),
+		"custom_total_investment": flt(totals.shares_investment) + active_cln_principal,
+	}, update_modified=False)
+
+
+@frappe.whitelist()
+def recompute_shareholder_totals(shareholder_name=None):
+	"""Recompute Total Shares Held / Total Investment for one Shareholder, or
+	every Shareholder if none is given. Use this once to backfill existing
+	records, since those fields were never populated before this was wired up."""
+	names = [shareholder_name] if shareholder_name else frappe.get_all("Shareholder", pluck="name")
+	for name in names:
+		recalculate_shareholder_totals(name)
+	frappe.db.commit()
+	return {"recalculated": len(names)}
+
+
+# ============================================
 # SHARE AGREEMENT FUNCTIONS
 # ============================================
 
@@ -68,7 +118,8 @@ def issue_shares_from_agreement(share_agreement_name):
         "source_document_name": agreement.name,
         "share_agreement_type": agreement.agreement_type,
         "remarks": "Shares issued as per Share Agreement {0}".format(agreement.name),
-        "auto_create_journal_entry": 1
+        "is_opening_entry": agreement.is_opening_entry or "No",
+        "auto_create_journal_entry": 0 if agreement.is_opening_entry == "Yes" else 1
     })
     
     sm.insert(ignore_permissions=True)
@@ -83,8 +134,42 @@ def issue_shares_from_agreement(share_agreement_name):
     frappe.db.commit()
     
     frappe.msgprint(_("Share Movement {0} created successfully. Please create Journal Entry from Share Movement to record payment.").format(sm.name))
-    
+
     return sm.name
+
+
+@frappe.whitelist()
+def cancel_share_agreement(share_agreement_name):
+    """Cancel a submitted Share Agreement and its linked Share Movement/Journal Entry.
+
+    The cascade (cancelling the linked Share Movement and Journal Entry) is handled
+    by ShareAgreement.on_cancel() - this just triggers the standard cancel flow.
+    """
+    agreement = frappe.get_doc("Share Agreement", share_agreement_name)
+
+    if agreement.docstatus != 1:
+        frappe.throw(_("Only a submitted Share Agreement can be cancelled"))
+
+    agreement.cancel()
+
+    return agreement.name
+
+
+@frappe.whitelist()
+def delete_share_agreement(share_agreement_name):
+    """Permanently delete a cancelled Share Agreement and its linked documents.
+
+    The cascade (deleting the linked, already-cancelled Share Movement/Journal Entry)
+    is handled by ShareAgreement.on_trash() - this just triggers the standard delete flow.
+    """
+    agreement = frappe.get_doc("Share Agreement", share_agreement_name)
+
+    if agreement.docstatus != 2:
+        frappe.throw(_("Only a cancelled Share Agreement can be deleted"))
+
+    frappe.delete_doc("Share Agreement", share_agreement_name, ignore_permissions=True)
+
+    return share_agreement_name
 
 
 # ============================================
@@ -105,10 +190,16 @@ def create_journal_entry_from_share_movement(share_movement_name):
     
     if sm.docstatus != 1:
         frappe.throw(_("Share Movement must be submitted first"))
-    
+
+    if sm.is_opening_entry == "Yes":
+        frappe.throw(_(
+            "This is an Opening Entry — no Journal Entry is needed. "
+            "The opening balance is already captured in your opening balance accounts."
+        ))
+
     if sm.journal_entry_ref:
         frappe.throw(_("Journal Entry already created: {0}").format(sm.journal_entry_ref))
-    
+
     if not sm.bank_account:
         frappe.throw(_("Please specify Bank Account before creating Journal Entry"))
     
@@ -119,10 +210,8 @@ def create_journal_entry_from_share_movement(share_movement_name):
     # Determine debit/credit based on movement type
     is_inflow = sm.movement_type in [
         "Equity Capital Injection",
-        "Initial Share Issuance", 
-        "Share Subscription", 
-        "Share Purchase", 
-        "Rights Issue"
+        "Share Purchase",
+        "Loan Equity Injection"
     ]
     
     accounts = []
@@ -231,8 +320,43 @@ def create_journal_entry_from_share_movement(share_movement_name):
     frappe.db.commit()
     
     frappe.msgprint(_("Journal Entry {0} created successfully").format(je.name))
-    
+
     return je.name
+
+
+@frappe.whitelist()
+def cancel_share_movement(share_movement_name):
+    """Cancel a submitted Share Movement and its linked Journal Entry.
+
+    The cascade (cancelling the linked Journal Entry and resetting the source
+    Share Agreement) is handled by ShareMovement.on_cancel() - this just triggers
+    the standard cancel flow.
+    """
+    sm = frappe.get_doc("Share Movement", share_movement_name)
+
+    if sm.docstatus != 1:
+        frappe.throw(_("Only a submitted Share Movement can be cancelled"))
+
+    sm.cancel()
+
+    return sm.name
+
+
+@frappe.whitelist()
+def delete_share_movement(share_movement_name):
+    """Permanently delete a cancelled Share Movement and its linked Journal Entry.
+
+    The cascade (deleting the already-cancelled Journal Entry) is handled by
+    ShareMovement.on_trash() - this just triggers the standard delete flow.
+    """
+    sm = frappe.get_doc("Share Movement", share_movement_name)
+
+    if sm.docstatus != 2:
+        frappe.throw(_("Only a cancelled Share Movement can be deleted"))
+
+    frappe.delete_doc("Share Movement", share_movement_name, ignore_permissions=True)
+
+    return share_movement_name
 
 
 # ============================================
@@ -277,8 +401,8 @@ def record_cln_disbursement(cln_name):
     company_currency = frappe.get_cached_value("Company", cln.company, "default_currency")
     
     # Get exchange rate
-    exchange_rate = cln.exchange_rate_cln or 1.0
-    if not cln.exchange_rate_cln and loan_currency != company_currency:
+    exchange_rate = cln.exchange_rate or 1.0
+    if not cln.exchange_rate and loan_currency != company_currency:
         exchange_rate = get_exchange_rate(loan_currency, company_currency, cln.issue_date)
     
     # Create Journal Entry
@@ -335,9 +459,10 @@ def record_cln_disbursement(cln_name):
         WHERE lender = %s AND status = 'Active' AND docstatus = 1
     """, cln.lender)[0][0] or 0
     shareholder.save(ignore_permissions=True)
-    
+    recalculate_shareholder_totals(cln.lender)
+
     frappe.db.commit()
-    
+
     frappe.msgprint(_("Journal Entry {0} created successfully for CLN disbursement").format(je.name))
     
     return je.name
@@ -404,8 +529,8 @@ def accrue_cln_interest(cln_name, accrual_date=None, exchange_rate=None):
     # Use user-provided exchange rate or get from CLN or fetch current rate
     if exchange_rate:
         final_exchange_rate = flt(exchange_rate, 6)
-    elif cln.exchange_rate_cln:
-        final_exchange_rate = flt(cln.exchange_rate_cln, 6)
+    elif cln.exchange_rate:
+        final_exchange_rate = flt(cln.exchange_rate, 6)
     elif loan_currency != company_currency:
         final_exchange_rate = flt(get_exchange_rate(loan_currency, company_currency, end_date), 6)
     else:
@@ -574,6 +699,150 @@ def accrue_cln_interest(cln_name, accrual_date=None, exchange_rate=None):
     }
 
 
+@frappe.whitelist()
+def record_cln_repayment(cln_name, repayment_date=None, penalty_amount=None):
+    """Repay a Convertible Loan Note in cash instead of converting it to shares.
+
+    ACCOUNTING LOGIC:
+    Loan Repayment (company paying back the lender):
+        Dr: Loan Liability Account (clearing the principal)
+        Dr: Interest Payable Account (if any accrued interest, clearing it)
+        Dr: Interest Expense Account (if an early repayment penalty applies)
+            Cr: Bank Account (money paid out)
+    """
+    cln = frappe.get_doc("Convertible Loan Note", cln_name)
+
+    if cln.docstatus != 1:
+        frappe.throw(_("Convertible Loan Note must be submitted first"))
+
+    if cln.status != "Active":
+        frappe.throw(_("CLN must be in Active status to record repayment"))
+
+    if cln.repayment_journal_entry_ref:
+        frappe.throw(_("Repayment already recorded: {0}").format(cln.repayment_journal_entry_ref))
+
+    if not cln.bank_account:
+        frappe.throw(_("Please specify Bank Account before recording repayment"))
+
+    if not cln.company:
+        frappe.throw(_("Please specify Company"))
+
+    repayment_date = repayment_date or frappe.utils.today()
+    penalty_amount = flt(penalty_amount)
+
+    if penalty_amount and not cln.early_repayment_allowed:
+        frappe.throw(_("Early Repayment Penalty was provided, but this CLN does not have 'Early Repayment Allowed' checked"))
+
+    if penalty_amount and not cln.interest_expense_account:
+        frappe.throw(_("Please specify Interest Expense Account to record the early repayment penalty"))
+
+    bank_account_doc = frappe.get_doc("Bank Account", cln.bank_account)
+    bank_gl_account = bank_account_doc.account
+
+    if not bank_gl_account:
+        frappe.throw(_("Bank Account {0} does not have a linked GL Account").format(cln.bank_account))
+
+    loan_currency = cln.loan_currency or "USD"
+    company_currency = frappe.get_cached_value("Company", cln.company, "default_currency")
+
+    exchange_rate = cln.exchange_rate or 1.0
+    if not cln.exchange_rate and loan_currency != company_currency:
+        exchange_rate = get_exchange_rate(loan_currency, company_currency, repayment_date)
+
+    accrued_interest = flt(cln.accrued_interest)
+    interest_payable_account = cln.interest_payable_account or cln.loan_liability_account
+    total_repayment = flt(cln.principal_amount) + accrued_interest + penalty_amount
+
+    accounts = [{
+        # Dr: Loan Liability (clearing principal)
+        "account": cln.loan_liability_account,
+        "debit_in_account_currency": cln.principal_amount,
+        "account_currency": loan_currency,
+        "exchange_rate": exchange_rate,
+        "party_type": "Shareholder",
+        "party": cln.lender,
+        "company": cln.company,
+        "against_account": bank_gl_account
+    }]
+
+    if accrued_interest > 0:
+        # Dr: Interest Payable (clearing accrued interest)
+        accounts.append({
+            "account": interest_payable_account,
+            "debit_in_account_currency": accrued_interest,
+            "account_currency": loan_currency,
+            "exchange_rate": exchange_rate,
+            "party_type": "Shareholder",
+            "party": cln.lender,
+            "company": cln.company,
+            "against_account": bank_gl_account
+        })
+
+    if penalty_amount > 0:
+        # Dr: Interest Expense (cost of repaying early)
+        accounts.append({
+            "account": cln.interest_expense_account,
+            "debit_in_account_currency": penalty_amount,
+            "account_currency": loan_currency,
+            "exchange_rate": exchange_rate,
+            "company": cln.company,
+            "against_account": bank_gl_account
+        })
+
+    accounts.append({
+        # Cr: Bank (money paid out)
+        "account": bank_gl_account,
+        "credit_in_account_currency": total_repayment,
+        "account_currency": loan_currency,
+        "exchange_rate": exchange_rate,
+        "company": cln.company,
+        "against_account": cln.loan_liability_account
+    })
+
+    je = frappe.get_doc({
+        "doctype": "Journal Entry",
+        "voucher_type": "Journal Entry",
+        "posting_date": repayment_date,
+        "company": cln.company,
+        "multi_currency": 1 if loan_currency != company_currency else 0,
+        "user_remark": "Repayment of Convertible Loan Note {0} to {1}".format(cln.name, cln.lender),
+        "accounts": accounts
+    })
+
+    je.insert(ignore_permissions=True)
+    je.submit()
+
+    # Update CLN using db_set
+    frappe.db.set_value("Convertible Loan Note", cln.name, {
+        "status": "Repaid",
+        "repayment_date": repayment_date,
+        "repayment_journal_entry_ref": je.name,
+        "repayment_penalty_amount": penalty_amount
+    })
+
+    # Update Shareholder
+    shareholder = frappe.get_doc("Shareholder", cln.lender)
+    shareholder.custom_total_cln_amount = frappe.db.sql("""
+        SELECT SUM(principal_amount)
+        FROM `tabConvertible Loan Note`
+        WHERE lender = %s AND status = 'Active' AND docstatus = 1
+    """, cln.lender)[0][0] or 0
+    shareholder.custom_has_convertible_loans = 1 if shareholder.custom_total_cln_amount > 0 else 0
+    shareholder.save(ignore_permissions=True)
+    recalculate_shareholder_totals(cln.lender)
+
+    frappe.db.commit()
+
+    frappe.msgprint(_("Convertible Loan Note {0} repaid. Journal Entry: {1}").format(cln.name, je.name))
+
+    return {
+        "journal_entry": je.name,
+        "repayment_date": repayment_date,
+        "total_repayment": total_repayment,
+        "penalty_amount": penalty_amount
+    }
+
+
 def get_exchange_rate(from_currency, to_currency, transaction_date):
     """Get exchange rate between two currencies"""
     if from_currency == to_currency:
@@ -608,8 +877,8 @@ def convert_cln_to_shares(cln_name, next_round_price=None, fully_diluted_shares=
     if cln.status != "Active":
         frappe.throw(_("CLN must be in Active status to convert"))
     
-    if cln.share_movement_ref:
-        frappe.throw(_("CLN already converted: {0}").format(cln.share_movement_ref))
+    if cln.share_transfer_ref:
+        frappe.throw(_("CLN already converted: {0}").format(cln.share_transfer_ref))
     
     if not cln.company:
         frappe.throw(_("Please specify Company"))
@@ -632,7 +901,7 @@ def convert_cln_to_shares(cln_name, next_round_price=None, fully_diluted_shares=
     
     company_currency = frappe.get_cached_value("Company", cln.company, "default_currency")
     loan_currency = cln.loan_currency or "USD"
-    exchange_rate = cln.exchange_rate_cln or 1.0
+    exchange_rate = cln.exchange_rate or 1.0
     
     # Step 1: Create Journal Entry for conversion
     je = create_cln_conversion_journal_entry(
@@ -694,7 +963,7 @@ def convert_cln_to_shares(cln_name, next_round_price=None, fully_diluted_shares=
         "conversion_price": conversion_price,
         "shares_issued": num_shares,
         "total_converted_amount": total_amount,
-        "share_movement_ref": sm.name,
+        "share_transfer_ref": sm.name,
         "conversion_journal_entry_ref": je.name
     })
     
@@ -707,9 +976,10 @@ def convert_cln_to_shares(cln_name, next_round_price=None, fully_diluted_shares=
         WHERE lender = %s AND status = 'Active' AND docstatus = 1
     """, cln.lender)[0][0] or 0
     shareholder.save(ignore_permissions=True)
-    
+    recalculate_shareholder_totals(cln.lender)
+
     frappe.db.commit()
-    
+
     frappe.msgprint(_("Successfully converted CLN to {0} shares. Journal Entry: {1}, Share Movement: {2}").format(
         num_shares, je.name, sm.name
     ))
@@ -817,24 +1087,8 @@ def create_cln_conversion_journal_entry(cln, total_amount, share_capital_amount,
     
     je.insert(ignore_permissions=True)
     je.submit()
-    
+
     return je
-
-
-def get_exchange_rate(from_currency, to_currency, transaction_date):
-    """Get exchange rate between two currencies"""
-    if from_currency == to_currency:
-        return 1.0
-    
-    from erpnext.setup.utils import get_exchange_rate as erpnext_exchange_rate
-    
-    try:
-        exchange_rate = erpnext_exchange_rate(from_currency, to_currency, transaction_date)
-        return flt(exchange_rate)
-    except:
-        frappe.throw(_("Exchange rate not found for {0} to {1}. Please create a Currency Exchange record").format(
-            from_currency, to_currency
-        ))
 
 
 # ============================================
@@ -853,17 +1107,17 @@ def get_share_register(company, as_on_date=None, share_class=None):
         conditions.append("sm.share_class = %(share_class)s")
     
     query = """
-        SELECT 
+        SELECT
             sm.to_shareholder,
-            sh.shareholder_name,
+            sh.title as shareholder_name,
             sm.share_class,
-            SUM(CASE WHEN sm.movement_type IN ('Initial Share Issuance', 'Share Subscription', 'Share Purchase', 'CLN Conversion', 'Bonus Issue', 'Rights Issue') 
+            SUM(CASE WHEN sm.movement_type IN ('Equity Capital Injection', 'Share Purchase', 'Loan Equity Injection')
                 THEN sm.number_of_shares ELSE 0 END) as shares_acquired,
-            SUM(CASE WHEN sm.movement_type IN ('Share Transfer', 'Share Buyback') AND sm.from_shareholder = sm.to_shareholder
+            SUM(CASE WHEN sm.movement_type = 'Share Buyback'
                 THEN -sm.number_of_shares ELSE 0 END) as shares_transferred,
-            SUM(CASE WHEN sm.movement_type IN ('Initial Share Issuance', 'Share Subscription', 'Share Purchase', 'CLN Conversion', 'Bonus Issue', 'Rights Issue') 
+            SUM(CASE WHEN sm.movement_type IN ('Equity Capital Injection', 'Share Purchase', 'Loan Equity Injection')
                 THEN sm.number_of_shares
-                WHEN sm.movement_type IN ('Share Transfer', 'Share Buyback') AND sm.from_shareholder = sm.to_shareholder
+                WHEN sm.movement_type = 'Share Buyback'
                 THEN -sm.number_of_shares
                 ELSE 0 END) as current_holding,
             SUM(sm.total_amount_base_currency) as total_investment

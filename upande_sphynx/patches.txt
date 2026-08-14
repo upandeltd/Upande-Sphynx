@@ -4,3 +4,5 @@
 
 [post_model_sync]
 # Patches added in this section will be executed after doctypes are migrated
+upande_sphynx.patches.v1_0.disable_default_share_reports
+upande_sphynx.patches.v1_0.add_shareholder_connections

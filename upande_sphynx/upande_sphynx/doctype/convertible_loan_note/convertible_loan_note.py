@@ -10,6 +10,7 @@
 from frappe.model.document import Document
 import frappe
 from frappe import _
+from upande_sphynx.api.capital_management import recalculate_shareholder_totals
 
 class ConvertibleLoanNote(Document):
     
@@ -46,20 +47,22 @@ class ConvertibleLoanNote(Document):
         self._cached_refs = {
             'disbursement_je': self.disbursement_journal_entry_ref,
             'conversion_je': self.conversion_journal_entry_ref,
+            'repayment_je': self.repayment_journal_entry_ref,
             'share_movement': self.share_transfer_ref,
             'interest_accruals': []
         }
-        
+
         # Cache interest accrual JEs
         if hasattr(self, 'interest_accruals') and self.interest_accruals:
             for accrual in self.interest_accruals:
                 if accrual.journal_entry:
                     self._cached_refs['interest_accruals'].append(accrual.journal_entry)
-        
+
         # Clear the link fields using db_set (works on submitted docs)
         frappe.db.set_value("Convertible Loan Note", self.name, {
             "disbursement_journal_entry_ref": None,
             "conversion_journal_entry_ref": None,
+            "repayment_journal_entry_ref": None,
             "share_transfer_ref": None
         }, update_modified=False)
         
@@ -141,7 +144,18 @@ class ConvertibleLoanNote(Document):
                     cancelled.append(f"Disbursement JE {je.name}")
             except Exception as e:
                 frappe.log_error(f"Error cancelling Disbursement JE: {str(e)}")
-        
+
+        # 5. Cancel Repayment JE
+        if refs.get('repayment_je'):
+            try:
+                je = frappe.get_doc("Journal Entry", refs['repayment_je'])
+                if je.docstatus == 1:
+                    je.flags.ignore_links = True
+                    je.cancel()
+                    cancelled.append(f"Repayment JE {je.name}")
+            except Exception as e:
+                frappe.log_error(f"Error cancelling Repayment JE: {str(e)}")
+
         if cancelled:
             print(f"✓ Cancelled: {', '.join(cancelled)}")
         
@@ -169,7 +183,8 @@ class ConvertibleLoanNote(Document):
             shareholder.custom_has_convertible_loans = 1 if active_cln_total > 0 else 0
             shareholder.flags.ignore_permissions = True
             shareholder.save()
-            
+            recalculate_shareholder_totals(self.lender)
+
             print(f"✓ Updated shareholder {self.lender}")
         except Exception as e:
             frappe.log_error(f"Error updating shareholder: {str(e)}")
@@ -196,7 +211,10 @@ class ConvertibleLoanNote(Document):
         
         if self.disbursement_journal_entry_ref:
             linked_docs.append(("Journal Entry", self.disbursement_journal_entry_ref))
-        
+
+        if self.repayment_journal_entry_ref:
+            linked_docs.append(("Journal Entry", self.repayment_journal_entry_ref))
+
         # Delete all linked cancelled documents
         for doctype, docname in linked_docs:
             try:

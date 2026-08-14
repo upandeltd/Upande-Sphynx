@@ -59,6 +59,7 @@
   "conversion_details",
   "section_break_zbvb",
   "auto_create_journal_entry",
+  "is_opening_entry",
   "journal_entry_ref"
  ],
  "fields": [
@@ -93,7 +94,7 @@
    "fieldtype": "Select",
    "in_list_view": 1,
    "label": "Status",
-   "options": "Draft\nCompleted\nCancelled",
+   "options": "Draft\nIssued\nCancelled",
    "read_only": 1
   },
   {
@@ -188,6 +189,7 @@
    "fieldtype": "Section Break"
   },
   {
+   "depends_on": "eval:doc.transaction_currency != frappe.defaults.get_default('currency')",
    "description": "Rate to convert transaction currency to company base currency",
    "fieldname": "exchange_rate",
    "fieldtype": "Float",
@@ -264,6 +266,15 @@
    "fieldname": "auto_create_journal_entry",
    "fieldtype": "Check",
    "label": "Auto-create Journal Entry on Submit"
+  },
+  {
+   "allow_on_submit": 1,
+   "default": "No",
+   "description": "Opening entries represent share positions migrated from before go-live. No Journal Entry is created for them — the opening balance is already captured in the books' opening balance accounts.",
+   "fieldname": "is_opening_entry",
+   "fieldtype": "Select",
+   "label": "Opening Entry",
+   "options": "No\nYes"
   },
   {
    "collapsible": 1,
@@ -396,7 +407,18 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
- "links": [],
+ "links": [
+  {
+   "group": "Capital Management",
+   "link_doctype": "Share Agreement",
+   "link_fieldname": "share_movement_ref"
+  },
+  {
+   "group": "Capital Management",
+   "link_doctype": "Convertible Loan Note",
+   "link_fieldname": "share_transfer_ref"
+  }
+ ],
  "modified": "2026-02-10 22:14:05.817282",
  "modified_by": "Administrator",
  "module": "Upande Sphynx",
@@ -444,12 +466,12 @@
    "title": "Draft"
   },
   {
-   "color": "Orange",
-   "title": "Pending Issue"
-  },
-  {
    "color": "Green",
    "title": "Issued"
+  },
+  {
+   "color": "Red",
+   "title": "Cancelled"
   }
  ],
  "track_changes": 1

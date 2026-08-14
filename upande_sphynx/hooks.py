@@ -43,7 +43,10 @@ app_license = "custom"
 # page_js = {"page" : "public/js/file.js"}
 
 # include js in doctype views
-# doctype_js = {"doctype" : "public/js/doctype.js"}
+doctype_js = {
+    "Shareholder": "public/js/shareholder.js",
+    "Share Transfer": "public/js/share_transfer.js",
+}
 # doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
 # doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}
@@ -204,23 +207,11 @@ fixtures = [
 # Scheduled Tasks
 # ---------------
 
-# scheduler_events = {
-# 	"all": [
-# 		"upande_sphynx.tasks.all"
-# 	],
-# 	"daily": [
-# 		"upande_sphynx.tasks.daily"
-# 	],
-# 	"hourly": [
-# 		"upande_sphynx.tasks.hourly"
-# 	],
-# 	"weekly": [
-# 		"upande_sphynx.tasks.weekly"
-# 	],
-# 	"monthly": [
-# 		"upande_sphynx.tasks.monthly"
-# 	],
-# }
+scheduler_events = {
+	"yearly": [
+		"upande_sphynx.tasks.revalue_share_capital_fx"
+	],
+}
 
 # Testing
 # -------
