@@ -1,0 +1,30 @@
+{
+ "content": null,
+ "creation": "2026-07-29 12:00:00.000000",
+ "docstatus": 0,
+ "doctype": "Page",
+ "icon": "icon-money",
+ "idx": 0,
+ "modified": "2026-07-29 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Upande Sphynx",
+ "name": "capital-management-sop",
+ "owner": "Administrator",
+ "page_name": "capital-management-sop",
+ "roles": [
+  {
+   "role": "System Manager"
+  },
+  {
+   "role": "Accounts Manager"
+  },
+  {
+   "role": "Accounts User"
+  }
+ ],
+ "script": null,
+ "standard": "Yes",
+ "style": null,
+ "system_page": 0,
+ "title": "Capital Management SOP"
+}
