@@ -379,7 +379,28 @@ def record_cln_disbursement(cln_name):
     
     if cln.disbursement_journal_entry_ref:
         frappe.throw(_("Disbursement already recorded: {0}").format(cln.disbursement_journal_entry_ref))
-    
+
+    if cln.is_opening_entry == "Yes":
+        # The loan balance already exists in the opening balance accounts —
+        # just activate the loan, no Journal Entry.
+        frappe.db.set_value("Convertible Loan Note", cln.name, "status", "Active")
+
+        shareholder = frappe.get_doc("Shareholder", cln.lender)
+        shareholder.custom_has_convertible_loans = 1
+        shareholder.custom_total_cln_amount = frappe.db.sql("""
+            SELECT SUM(principal_amount)
+            FROM `tabConvertible Loan Note`
+            WHERE lender = %s AND status = 'Active' AND docstatus = 1
+        """, cln.lender)[0][0] or 0
+        shareholder.save(ignore_permissions=True)
+        recalculate_shareholder_totals(cln.lender)
+
+        frappe.db.commit()
+
+        frappe.msgprint(_("Opening Entry — CLN marked Active. No Journal Entry was created, since the balance is already in your opening balance accounts."))
+
+        return None
+
     if not cln.bank_account:
         frappe.throw(_("Please specify Bank Account before recording disbursement"))
     
@@ -700,15 +721,33 @@ def accrue_cln_interest(cln_name, accrual_date=None, exchange_rate=None):
 
 
 @frappe.whitelist()
-def record_cln_repayment(cln_name, repayment_date=None, penalty_amount=None):
-    """Repay a Convertible Loan Note in cash instead of converting it to shares.
+def get_cln_outstanding_balance(cln_name):
+    """Return what's still owed on a CLN after any prior repayment installments."""
+    cln = frappe.get_doc("Convertible Loan Note", cln_name)
+    paid_principal = sum(flt(row.principal_paid) for row in cln.repayments)
+    paid_interest = sum(flt(row.interest_paid) for row in cln.repayments)
+    return {
+        "outstanding_principal": flt(cln.principal_amount) - paid_principal,
+        "outstanding_interest": flt(cln.accrued_interest) - paid_interest,
+    }
 
-    ACCOUNTING LOGIC:
+
+@frappe.whitelist()
+def record_cln_repayment(cln_name, repayment_date=None, principal_amount=None, interest_amount=None,
+                          penalty_amount=None, exchange_rate=None):
+    """Repay a Convertible Loan Note in cash instead of converting it to shares.
+    Supports partial, installment-based repayment — call this once per
+    installment; each call records what was paid *this time*, not
+    necessarily the full outstanding balance. Leave principal_amount /
+    interest_amount unset to default to paying off everything outstanding
+    in one go.
+
+    ACCOUNTING LOGIC (per installment):
     Loan Repayment (company paying back the lender):
-        Dr: Loan Liability Account (clearing the principal)
-        Dr: Interest Payable Account (if any accrued interest, clearing it)
+        Dr: Loan Liability Account (this installment's principal portion)
+        Dr: Interest Payable Account (this installment's interest portion, if any)
         Dr: Interest Expense Account (if an early repayment penalty applies)
-            Cr: Bank Account (money paid out)
+            Cr: Bank Account (money paid out this time)
     """
     cln = frappe.get_doc("Convertible Loan Note", cln_name)
 
@@ -717,9 +756,6 @@ def record_cln_repayment(cln_name, repayment_date=None, penalty_amount=None):
 
     if cln.status != "Active":
         frappe.throw(_("CLN must be in Active status to record repayment"))
-
-    if cln.repayment_journal_entry_ref:
-        frappe.throw(_("Repayment already recorded: {0}").format(cln.repayment_journal_entry_ref))
 
     if not cln.bank_account:
         frappe.throw(_("Please specify Bank Account before recording repayment"))
@@ -736,6 +772,29 @@ def record_cln_repayment(cln_name, repayment_date=None, penalty_amount=None):
     if penalty_amount and not cln.interest_expense_account:
         frappe.throw(_("Please specify Interest Expense Account to record the early repayment penalty"))
 
+    balance = get_cln_outstanding_balance(cln_name)
+    outstanding_principal = flt(balance["outstanding_principal"])
+    outstanding_interest = flt(balance["outstanding_interest"])
+
+    # Default to paying off everything outstanding, if this installment's
+    # amounts weren't specified — preserves "just repay it" as the simple case.
+    principal_amount = outstanding_principal if principal_amount is None else flt(principal_amount)
+    interest_amount = outstanding_interest if interest_amount is None else flt(interest_amount)
+
+    if principal_amount < 0 or interest_amount < 0:
+        frappe.throw(_("Principal and interest amounts can't be negative"))
+
+    if principal_amount - outstanding_principal > 0.01:
+        frappe.throw(_("Principal being repaid ({0}) is more than what's outstanding ({1})").format(
+            principal_amount, outstanding_principal))
+
+    if interest_amount - outstanding_interest > 0.01:
+        frappe.throw(_("Interest being repaid ({0}) is more than what's outstanding ({1})").format(
+            interest_amount, outstanding_interest))
+
+    if principal_amount <= 0 and interest_amount <= 0:
+        frappe.throw(_("Nothing to repay — this loan's outstanding balance is already zero"))
+
     bank_account_doc = frappe.get_doc("Bank Account", cln.bank_account)
     bank_gl_account = bank_account_doc.account
 
@@ -745,33 +804,40 @@ def record_cln_repayment(cln_name, repayment_date=None, penalty_amount=None):
     loan_currency = cln.loan_currency or "USD"
     company_currency = frappe.get_cached_value("Company", cln.company, "default_currency")
 
-    exchange_rate = cln.exchange_rate or 1.0
-    if not cln.exchange_rate and loan_currency != company_currency:
-        exchange_rate = get_exchange_rate(loan_currency, company_currency, repayment_date)
+    if exchange_rate:
+        final_exchange_rate = flt(exchange_rate)
+    elif cln.exchange_rate:
+        final_exchange_rate = flt(cln.exchange_rate)
+    elif loan_currency != company_currency:
+        final_exchange_rate = get_exchange_rate(loan_currency, company_currency, repayment_date)
+    else:
+        final_exchange_rate = 1.0
 
-    accrued_interest = flt(cln.accrued_interest)
     interest_payable_account = cln.interest_payable_account or cln.loan_liability_account
-    total_repayment = flt(cln.principal_amount) + accrued_interest + penalty_amount
+    this_installment_total = principal_amount + interest_amount + penalty_amount
 
-    accounts = [{
-        # Dr: Loan Liability (clearing principal)
-        "account": cln.loan_liability_account,
-        "debit_in_account_currency": cln.principal_amount,
-        "account_currency": loan_currency,
-        "exchange_rate": exchange_rate,
-        "party_type": "Shareholder",
-        "party": cln.lender,
-        "company": cln.company,
-        "against_account": bank_gl_account
-    }]
+    accounts = []
 
-    if accrued_interest > 0:
-        # Dr: Interest Payable (clearing accrued interest)
+    if principal_amount > 0:
+        # Dr: Loan Liability (this installment's principal)
+        accounts.append({
+            "account": cln.loan_liability_account,
+            "debit_in_account_currency": principal_amount,
+            "account_currency": loan_currency,
+            "exchange_rate": final_exchange_rate,
+            "party_type": "Shareholder",
+            "party": cln.lender,
+            "company": cln.company,
+            "against_account": bank_gl_account
+        })
+
+    if interest_amount > 0:
+        # Dr: Interest Payable (this installment's interest)
         accounts.append({
             "account": interest_payable_account,
-            "debit_in_account_currency": accrued_interest,
+            "debit_in_account_currency": interest_amount,
             "account_currency": loan_currency,
-            "exchange_rate": exchange_rate,
+            "exchange_rate": final_exchange_rate,
             "party_type": "Shareholder",
             "party": cln.lender,
             "company": cln.company,
@@ -784,17 +850,17 @@ def record_cln_repayment(cln_name, repayment_date=None, penalty_amount=None):
             "account": cln.interest_expense_account,
             "debit_in_account_currency": penalty_amount,
             "account_currency": loan_currency,
-            "exchange_rate": exchange_rate,
+            "exchange_rate": final_exchange_rate,
             "company": cln.company,
             "against_account": bank_gl_account
         })
 
     accounts.append({
-        # Cr: Bank (money paid out)
+        # Cr: Bank (money paid out this installment)
         "account": bank_gl_account,
-        "credit_in_account_currency": total_repayment,
+        "credit_in_account_currency": this_installment_total,
         "account_currency": loan_currency,
-        "exchange_rate": exchange_rate,
+        "exchange_rate": final_exchange_rate,
         "company": cln.company,
         "against_account": cln.loan_liability_account
     })
@@ -805,22 +871,42 @@ def record_cln_repayment(cln_name, repayment_date=None, penalty_amount=None):
         "posting_date": repayment_date,
         "company": cln.company,
         "multi_currency": 1 if loan_currency != company_currency else 0,
-        "user_remark": "Repayment of Convertible Loan Note {0} to {1}".format(cln.name, cln.lender),
+        "user_remark": "Repayment installment for Convertible Loan Note {0} to {1}".format(cln.name, cln.lender),
         "accounts": accounts
     })
 
     je.insert(ignore_permissions=True)
     je.submit()
 
-    # Update CLN using db_set
-    frappe.db.set_value("Convertible Loan Note", cln.name, {
-        "status": "Repaid",
-        "repayment_date": repayment_date,
-        "repayment_journal_entry_ref": je.name,
-        "repayment_penalty_amount": penalty_amount
-    })
+    remaining_principal = flt(outstanding_principal - principal_amount, 2)
+    remaining_interest = flt(outstanding_interest - interest_amount, 2)
+    fully_repaid = remaining_principal <= 0.01 and remaining_interest <= 0.01
 
-    # Update Shareholder
+    # Reload to append to the child table and update summary fields
+    cln_doc = frappe.get_doc("Convertible Loan Note", cln.name)
+    cln_doc.append("repayments", {
+        "repayment_date": repayment_date,
+        "principal_paid": principal_amount,
+        "interest_paid": interest_amount,
+        "penalty_paid": penalty_amount,
+        "exchange_rate": final_exchange_rate,
+        "journal_entry": je.name,
+        "remaining_principal": max(remaining_principal, 0),
+        "remaining_interest": max(remaining_interest, 0),
+        "currency": loan_currency,
+        "remarks": "Fully repaid" if fully_repaid else "Partial repayment installment"
+    })
+    cln_doc.total_repaid = flt((cln_doc.total_repaid or 0) + this_installment_total, 2)
+
+    if fully_repaid:
+        cln_doc.status = "Repaid"
+        cln_doc.repayment_date = repayment_date
+
+    cln_doc.flags.ignore_validate = True
+    cln_doc.flags.ignore_mandatory = True
+    cln_doc.save(ignore_permissions=True)
+
+    # Update Shareholder — only drops out of the "Active" total once fully repaid
     shareholder = frappe.get_doc("Shareholder", cln.lender)
     shareholder.custom_total_cln_amount = frappe.db.sql("""
         SELECT SUM(principal_amount)
@@ -833,13 +919,22 @@ def record_cln_repayment(cln_name, repayment_date=None, penalty_amount=None):
 
     frappe.db.commit()
 
-    frappe.msgprint(_("Convertible Loan Note {0} repaid. Journal Entry: {1}").format(cln.name, je.name))
+    if fully_repaid:
+        frappe.msgprint(_("Convertible Loan Note {0} fully repaid. Journal Entry: {1}").format(cln.name, je.name))
+    else:
+        frappe.msgprint(_("Repayment installment recorded for {0}. Journal Entry: {1}. Remaining: {2} principal, {3} interest.").format(
+            cln.name, je.name, remaining_principal, remaining_interest))
 
     return {
         "journal_entry": je.name,
         "repayment_date": repayment_date,
-        "total_repayment": total_repayment,
-        "penalty_amount": penalty_amount
+        "principal_paid": principal_amount,
+        "interest_paid": interest_amount,
+        "penalty_amount": penalty_amount,
+        "installment_total": this_installment_total,
+        "remaining_principal": max(remaining_principal, 0),
+        "remaining_interest": max(remaining_interest, 0),
+        "fully_repaid": fully_repaid
     }
 
 

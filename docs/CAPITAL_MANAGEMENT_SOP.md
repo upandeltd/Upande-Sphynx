@@ -90,11 +90,10 @@ Go to **Share Agreement List → New** and fill in:
   - Board seats, drag-along rights, tag-along rights.
 - **Payment** — payment method (**Bank Transfer**, **Cash**, **Cheque**, or **Other**), bank account, payment date.
 - **Signed Agreement** — attach the signed document.
-- **Opening Entry** — leave this as **No** for a normal, new investment. Only set it to **Yes** if you're entering a share position that existed *before* this system went live (a migrated/imported starting balance). See the callout below.
 
 The **Total Consideration** and **Share Premium Amount** fields calculate themselves — you don't need to fill those in.
 
-> **About Opening Entry:** if you're recording history from before go-live, the money for that investment was already accounted for in your books' opening balances — you don't want the system to post it *again* as a fresh Journal Entry. Setting Opening Entry to "Yes" tells the system to skip the accounting entry (Step 4 below) while still recording the shares themselves so they count correctly toward that shareholder's holdings.
+> **Recording a pre-existing share position?** Under the **More Info** tab, set **Opening Entry** to **Yes** if this agreement represents a share position that existed *before* this system went live (a migrated/imported starting balance), rather than a new investment. The money for that investment was already accounted for in your books' opening balances, so you don't want the system to post it *again* as a fresh Journal Entry — Opening Entry tells it to skip that (Step 4 below) while still recording the shares themselves so they count correctly toward that shareholder's holdings. Leave it as **No** for a normal, new investment.
 
 ### Step 2 — Submit the agreement
 Use the standard **Submit** button. The Status field will still show "Draft" right after submitting — that's expected, it only updates once you complete Step 3.
@@ -108,9 +107,11 @@ On the submitted agreement, click **Actions → Issue Shares**. This:
 The Share Movement opens as a **Draft**. A banner on the form reminds you it doesn't affect your books yet — you still need to submit it, and this is the moment to check the details are correct before you do.
 
 ### Step 4 — Submit the Share Movement, then record the payment
-**Submit** the Share Movement first. Once submitted, use the **Create Journal Entry** button — this posts the accounting entry (money coming into the bank account, and Share Capital, plus Share Premium if the shares were priced above par, increasing on the books) and links the entry back to the Share Movement. A banner reminds you this step is still outstanding until you do it.
+Before submitting, check the **Auto-create Journal Entry on Submit** checkbox (checked by default): if it's **checked**, the Journal Entry is created and posted automatically the moment you submit — you'll see a pop-up confirming this as soon as you check the box. If you **uncheck** it, you'll get a pop-up reminding you to create it yourself afterward, and you'll need to use the **Create Journal Entry** button (Actions) once the Share Movement is submitted. Either way, this posts the same accounting entry — money coming into the bank account, and Share Capital, plus Share Premium if the shares were priced above par, increasing on the books.
 
-**If this is an Opening Entry, you won't see the Create Journal Entry button** — that's correct, not a fault. No Journal Entry is needed since the balance is already in your books; submitting the Share Movement is still required so the shares count toward the shareholder's holdings.
+**If this is an Opening Entry**, the checkbox is locked off and the Create Journal Entry button never appears — that's correct, not a fault. No Journal Entry is needed since the balance is already in your books; submitting the Share Movement is still required so the shares count toward the shareholder's holdings.
+
+The banner at the top of the form always tells you exactly what's outstanding, so you don't need to remember which option you picked.
 
 ### If you need to cancel
 Use **Cancel Agreement** (found under Actions on a submitted agreement). This automatically cancels the linked Share Movement and Journal Entry for you — you don't need to cancel each one by hand. Once cancelled, a **Delete Agreement** button appears if you need to remove it completely.
@@ -142,10 +143,12 @@ Go to **Convertible Loan Note List → New** and fill in:
 - **Accounting**: Loan Liability Account, Bank Account, Interest Expense/Payable Accounts, and the Share Capital/Premium Accounts that will be used later at conversion.
 - **Signed Note Agreement** — attach the signed document.
 
+> **Recording a pre-existing loan?** Under the **More Info** tab, set **Opening Entry** to **Yes** if this loan already existed before this system went live. Recording the disbursement (Step 3) will then just mark the loan Active without posting a Journal Entry, since the money movement already happened and is reflected in your opening balances.
+
 ### Step 2 — Submit the CLN
 
 ### Step 3 — Record the disbursement
-Once the money has actually gone out to the investor, click **Actions → Record Loan Disbursement**. This posts the accounting entry (money out of the bank, loan liability recorded) and moves the loan's status to **Active**.
+Once the money has actually gone out to the investor, click **Actions → Record Loan Disbursement**. This posts the accounting entry (money out of the bank, loan liability recorded) and moves the loan's status to **Active**. For an Opening Entry, no Journal Entry is posted — the loan is simply marked Active.
 
 ### Step 4 — Accrue interest periodically
 Whenever it's time to book interest (matching the frequency you chose in Step 1), click **Actions → Accrue Interest**. You'll be asked for the accrual date, and, if the loan is in a foreign currency, an exchange rate (or leave it blank to use the rate already on the loan). This posts the interest accounting entry and adds a row to the loan's **Interest Accruals** table, so you can see the full history on the form.
@@ -158,14 +161,17 @@ When the conversion trigger is met, click **Actions → Convert to Shares**. You
 - Marks the loan's status as **Converted**.
 
 ### Step 5b — Or, repay the loan in cash instead
-If the loan is being paid back in cash rather than converting into shares, click **Actions → Record Repayment** instead of converting. You'll be asked for:
+If the loan is being paid back in cash rather than converting into shares, click **Actions → Record Repayment** instead of converting. You don't have to repay it all at once — this supports installments, so you can record several partial repayments over time until the loan is fully settled.
+
+When you click it, a dialog shows the current outstanding principal and interest, pre-filled as the amounts to repay:
 - **Repayment Date**.
+- **Principal to Repay** and **Interest to Repay** — pre-filled with the full outstanding amounts. Leave them as-is to settle the loan in full, or reduce either one to record a partial installment instead.
 - **Early Repayment Penalty** — only shown if this loan has "Early Repayment Allowed" checked. Leave it blank if no penalty applies. If you do enter one, this CLN needs an Interest Expense Account set, since that's where the penalty is booked.
 
-This posts the accounting entry clearing the loan liability and any accrued interest, plus the penalty if one applies, out of the bank account, and marks the loan's status as **Repaid**.
+Each time you record a repayment, it posts the accounting entry for just that installment (clearing the amount actually being paid, plus any penalty, out of the bank account), and logs a row in the loan's **Repayments** table so you can see the full payment history. The loan stays **Active** until both outstanding principal and interest reach zero, at which point its status becomes **Repaid** and the Record Repayment button disappears — there's nothing further to pay.
 
 ### If you need to cancel
-Use the standard **Cancel** action. This automatically cancels everything linked to this loan — the resulting Share Movement (if converted), the conversion entry, the repayment entry (if repaid), every interest accrual entry, and the disbursement entry — and updates the lender's totals. You don't need to cancel each one individually. Once cancelled, use **Delete CLN & All Linked Docs** if you need to remove it completely.
+Use the standard **Cancel** action. This automatically cancels everything linked to this loan — the resulting Share Movement (if converted), the conversion entry, every repayment installment's entry, every interest accrual entry, and the disbursement entry — and updates the lender's totals. You don't need to cancel each one individually. Once cancelled, use **Delete CLN & All Linked Docs** if you need to remove it completely.
 
 ---
 
@@ -207,7 +213,7 @@ Every Share Movement — whether created automatically from a Share Agreement, a
 |---|---|
 | **Equity Capital Injection** | A shareholder has paid the company for brand-new shares. This is what a Share Agreement creates automatically when you click "Issue Shares" (Section 5, Step 3) — the normal outcome of a new investment. |
 | **Share Purchase** | A shareholder purchasing shares in a way that isn't tied to a formal Share Agreement — for example, a manually recorded purchase. |
-| **Loan Equity Injection** | Shares created by converting a Convertible Loan Note (Section 6, Step 5). The system sets this automatically when you click "Convert to Shares" — you don't need to choose it yourself. |
+| **Loan Equity Injection** | Shares created by converting a Convertible Loan Note (Section 6, Step 5a). The system sets this automatically when you click "Convert to Shares" — you don't need to choose it yourself. |
 | **Share Buyback** | The company repurchasing shares from a shareholder, reducing their holding rather than increasing it. The accounting entry runs in reverse compared to the other three types — money goes *out* of the bank, and Share Capital goes *down*. |
 
 You'll only need to choose a Movement Type yourself when recording a buyback directly — the other three are set automatically by the process that creates them.
@@ -258,7 +264,6 @@ This is the fastest way to get a full picture of one shareholder's history witho
 | One shareholder's Total Shares Held looks negative or clearly wrong | A data setup issue affecting a small number of historical transactions for that shareholder | The totals themselves are calculated correctly from what's recorded — ask whoever administers the system to look into the underlying transactions for that shareholder |
 | Both "Convert to Shares" and "Record Repayment" show on a CLN | Expected — an active loan can go either way; use whichever applies and the other disappears once the loan's status changes | Pick the one that matches what's actually happening with this loan |
 | The Actions buttons (Issue Shares, Record Disbursement, Convert to Shares, Record Repayment, etc.) don't appear at all | The site may need an update applied | Ask whoever administers the system to check and apply the latest update |
-| Don't use **Share Register** or **Bulk Upload** | Both are unfinished placeholders with nothing working behind them | Use the processes and reports described in this guide instead |
 
 ---
 

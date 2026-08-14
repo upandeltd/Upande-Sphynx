@@ -4,15 +4,42 @@
 // Reminds the user this record doesn't affect the books on its own — a
 // Share Movement is just a record of shares changing hands until it's
 // submitted and, for anything other than an Opening Entry, has a Journal
-// Entry created from it.
+// Entry created from it (either automatically, if "Auto-create Journal
+// Entry on Submit" is checked, or via the Create Journal Entry action).
 frappe.ui.form.on('Share Movement', {
     refresh: function(frm) {
-        if (frm.doc.docstatus === 0 && !frm.doc.__islocal) {
-            frm.set_intro(__('This Share Movement is still a Draft. Submit it to make it official, then use "Create Journal Entry" (once submitted) to record the accounting impact on your books.'), 'orange');
-        } else if (frm.doc.docstatus === 1 && !frm.doc.journal_entry_ref && frm.doc.is_opening_entry !== 'Yes') {
-            frm.set_intro(__('Submitted. Use the "Create Journal Entry" button above to record this in your books.'), 'blue');
+        if (frm.doc.is_opening_entry === 'Yes') {
+            if (frm.doc.docstatus === 0 && !frm.doc.__islocal) {
+                frm.set_intro(__('This is a Draft Opening Entry. No Journal Entry will be created — submit it so the shares count toward the shareholder\'s holdings.'), 'orange');
+            } else {
+                frm.set_intro();
+            }
+        } else if (frm.doc.docstatus === 0 && !frm.doc.__islocal) {
+            if (frm.doc.auto_create_journal_entry) {
+                frm.set_intro(__('This Share Movement is still a Draft. Its Journal Entry will be created and submitted automatically when you submit this document.'), 'orange');
+            } else {
+                frm.set_intro(__('This Share Movement is still a Draft. Submit it, then use "Create Journal Entry" (Actions) to record the accounting impact on your books.'), 'orange');
+            }
+        } else if (frm.doc.docstatus === 1 && !frm.doc.journal_entry_ref) {
+            frm.set_intro(__('Submitted, but no Journal Entry exists yet. Use "Create Journal Entry" (Actions) to record this in your books.'), 'blue');
         } else {
             frm.set_intro();
+        }
+    },
+
+    auto_create_journal_entry: function(frm) {
+        if (frm.doc.is_opening_entry === 'Yes') {
+            // Shouldn't be reachable — the field is read-only in this case —
+            // but guard against it anyway (e.g. programmatic changes).
+            frm.set_value('auto_create_journal_entry', 0);
+            frappe.msgprint(__('Opening Entries never get a Journal Entry, so this can\'t be enabled here.'));
+            return;
+        }
+
+        if (frm.doc.auto_create_journal_entry) {
+            frappe.msgprint(__('This Share Movement\'s Journal Entry will now be created and submitted automatically as soon as you submit this document.'));
+        } else {
+            frappe.msgprint(__('You\'ll need to create the Journal Entry yourself after submitting — use "Create Journal Entry" under Actions.'));
         }
     }
 });

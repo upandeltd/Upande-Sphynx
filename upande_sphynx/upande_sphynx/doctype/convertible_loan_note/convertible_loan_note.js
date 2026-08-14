@@ -76,8 +76,8 @@ frappe.ui.form.on('Convertible Loan Note', {
                                         message: __('Journal Entry {0} created successfully', [r.message]),
                                         indicator: 'green'
                                     }, 5);
-                                    frm.reload_doc();
                                 }
+                                frm.reload_doc();
                             }
                         });
                     }
@@ -259,74 +259,107 @@ frappe.ui.form.on('Convertible Loan Note', {
             }, __('Actions'));
         }
 
-        // Record Repayment (cash repayment instead of conversion)
-        if (frm.doc.status === 'Active' && !frm.doc.repayment_journal_entry_ref) {
+        // Record Repayment (cash repayment instead of conversion) — supports
+        // partial, installment-based repayment. Stays available as long as
+        // the loan is Active; once fully repaid, status flips to "Repaid"
+        // and this button naturally disappears.
+        if (frm.doc.status === 'Active') {
             frm.add_custom_button(__('Record Repayment'), function() {
-                let d = new frappe.ui.Dialog({
-                    title: __('Record Loan Repayment'),
-                    fields: [
-                        {
-                            label: __('Repayment Summary'),
-                            fieldname: 'info',
-                            fieldtype: 'HTML',
-                            options: '<div class="alert alert-info">' +
-                                '<strong>Principal:</strong> ' + format_currency(frm.doc.principal_amount) + '<br>' +
-                                '<strong>Accrued Interest:</strong> ' + format_currency(frm.doc.accrued_interest || 0) +
-                                '</div>'
-                        },
-                        {
-                            label: __('Repayment Date'),
-                            fieldname: 'repayment_date',
-                            fieldtype: 'Date',
-                            default: frappe.datetime.get_today(),
-                            reqd: 1
-                        },
-                        {
-                            label: __('Early Repayment Penalty'),
-                            fieldname: 'penalty_amount',
-                            fieldtype: 'Currency',
-                            hidden: !frm.doc.early_repayment_allowed,
-                            description: frm.doc.early_repayment_allowed
-                                ? __('Optional. Requires an Interest Expense Account to be set on this CLN.')
-                                : ''
-                        }
-                    ],
-                    primary_action_label: __('Record Repayment'),
-                    primary_action: function(values) {
-                        d.hide();
+                frappe.call({
+                    method: 'upande_sphynx.api.capital_management.get_cln_outstanding_balance',
+                    args: { cln_name: frm.doc.name },
+                    freeze: true,
+                    callback: function(r) {
+                        if (!r.message) return;
 
-                        frappe.call({
-                            method: 'upande_sphynx.api.capital_management.record_cln_repayment',
-                            args: {
-                                cln_name: frm.doc.name,
-                                repayment_date: values.repayment_date,
-                                penalty_amount: values.penalty_amount || null
-                            },
-                            freeze: true,
-                            freeze_message: __('Recording Repayment...'),
-                            callback: function(r) {
-                                if (r.message) {
-                                    let msg = '<div class="repayment-success">' +
-                                        '<h4>Repayment Recorded</h4>' +
-                                        '<table class="table table-bordered">' +
-                                        '<tr><td><strong>Total Repaid:</strong></td><td>' + format_currency(r.message.total_repayment) + '</td></tr>' +
-                                        '<tr><td><strong>Journal Entry:</strong></td><td><a href="/app/journal-entry/' + r.message.journal_entry + '">' + r.message.journal_entry + '</a></td></tr>' +
-                                        '</table></div>';
+                        const currency = frm.doc.loan_currency || 'USD';
+                        const outstanding_principal = r.message.outstanding_principal || 0;
+                        const outstanding_interest = r.message.outstanding_interest || 0;
 
-                                    frappe.msgprint({
-                                        title: __('Loan Repaid'),
-                                        message: msg,
-                                        indicator: 'green'
-                                    });
-
-                                    frm.reload_doc();
+                        let d = new frappe.ui.Dialog({
+                            title: __('Record Loan Repayment'),
+                            fields: [
+                                {
+                                    label: __('Outstanding Balance'),
+                                    fieldname: 'info',
+                                    fieldtype: 'HTML',
+                                    options: '<div class="alert alert-info">' +
+                                        '<strong>Outstanding Principal:</strong> ' + format_currency(outstanding_principal, currency) + '<br>' +
+                                        '<strong>Outstanding Interest:</strong> ' + format_currency(outstanding_interest, currency) + '<br>' +
+                                        '<small>' + __('Reduce either amount below to record a partial installment instead of a full repayment.') + '</small>' +
+                                        '</div>'
+                                },
+                                {
+                                    label: __('Repayment Date'),
+                                    fieldname: 'repayment_date',
+                                    fieldtype: 'Date',
+                                    default: frappe.datetime.get_today(),
+                                    reqd: 1
+                                },
+                                {
+                                    label: __('Principal to Repay') + ' (' + currency + ')',
+                                    fieldname: 'principal_amount',
+                                    fieldtype: 'Currency',
+                                    default: outstanding_principal
+                                },
+                                {
+                                    label: __('Interest to Repay') + ' (' + currency + ')',
+                                    fieldname: 'interest_amount',
+                                    fieldtype: 'Currency',
+                                    default: outstanding_interest
+                                },
+                                {
+                                    label: __('Early Repayment Penalty') + ' (' + currency + ')',
+                                    fieldname: 'penalty_amount',
+                                    fieldtype: 'Currency',
+                                    hidden: !frm.doc.early_repayment_allowed,
+                                    description: frm.doc.early_repayment_allowed
+                                        ? __('Optional. Requires an Interest Expense Account to be set on this CLN.')
+                                        : ''
                                 }
+                            ],
+                            primary_action_label: __('Record Repayment'),
+                            primary_action: function(values) {
+                                d.hide();
+
+                                frappe.call({
+                                    method: 'upande_sphynx.api.capital_management.record_cln_repayment',
+                                    args: {
+                                        cln_name: frm.doc.name,
+                                        repayment_date: values.repayment_date,
+                                        principal_amount: values.principal_amount,
+                                        interest_amount: values.interest_amount,
+                                        penalty_amount: values.penalty_amount || null
+                                    },
+                                    freeze: true,
+                                    freeze_message: __('Recording Repayment...'),
+                                    callback: function(r2) {
+                                        if (r2.message) {
+                                            let msg = '<div class="repayment-success">' +
+                                                '<h4>' + (r2.message.fully_repaid ? __('Loan Fully Repaid') : __('Installment Recorded')) + '</h4>' +
+                                                '<table class="table table-bordered">' +
+                                                '<tr><td><strong>' + __('This Installment') + ':</strong></td><td>' + format_currency(r2.message.installment_total, currency) + '</td></tr>' +
+                                                '<tr><td><strong>' + __('Remaining Principal') + ':</strong></td><td>' + format_currency(r2.message.remaining_principal, currency) + '</td></tr>' +
+                                                '<tr><td><strong>' + __('Remaining Interest') + ':</strong></td><td>' + format_currency(r2.message.remaining_interest, currency) + '</td></tr>' +
+                                                '<tr><td><strong>Journal Entry:</strong></td><td><a href="/app/journal-entry/' + r2.message.journal_entry + '">' + r2.message.journal_entry + '</a></td></tr>' +
+                                                '</table></div>';
+
+                                            frappe.msgprint({
+                                                title: r2.message.fully_repaid ? __('Loan Repaid') : __('Installment Recorded'),
+                                                message: msg,
+                                                indicator: 'green'
+                                            });
+
+                                            frm.reload_doc();
+                                        }
+                                    }
+                                });
                             }
                         });
+
+                        d.show();
                     }
                 });
-
-                d.show();
             }, __('Actions'));
         }
     }

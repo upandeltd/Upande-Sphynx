@@ -16,6 +16,11 @@ class ShareMovement(Document):
         self.validate_source_document()
         self.generate_certificate_numbers()
 
+        # Opening entries never get a Journal Entry — don't let the checkbox
+        # claim otherwise, regardless of what the client sent.
+        if self.is_opening_entry == "Yes" and self.auto_create_journal_entry:
+            self.auto_create_journal_entry = 0
+
     def validate_source_document(self):
         """Validate that certain movement types must come from source documents"""
 
@@ -91,10 +96,26 @@ class ShareMovement(Document):
         )
 
     def on_submit(self):
-        """Keep the to/from Shareholder's holdings and investment totals current."""
+        """Keep the to/from Shareholder's holdings and investment totals
+        current, and auto-create the Journal Entry if the user opted in via
+        "Auto-create Journal Entry on Submit" (never for Opening Entries —
+        validate() already forces the checkbox off for those)."""
         recalculate_shareholder_totals(self.to_shareholder)
         if self.from_shareholder:
             recalculate_shareholder_totals(self.from_shareholder)
+
+        if self.auto_create_journal_entry and not self.journal_entry_ref:
+            from upande_sphynx.api.capital_management import create_journal_entry_from_share_movement
+            try:
+                create_journal_entry_from_share_movement(self.name)
+            except Exception:
+                frappe.log_error(frappe.get_traceback(), "Share Movement auto Journal Entry creation failed")
+                frappe.msgprint(
+                    _("Could not automatically create the Journal Entry for this Share Movement — "
+                      "use Create Journal Entry from the Actions menu instead."),
+                    indicator="orange",
+                    alert=True
+                )
 
     def on_cancel(self):
         """Handle cancellation - cancel linked JE and clear references"""
@@ -106,11 +127,8 @@ class ShareMovement(Document):
             except Exception as e:
                 frappe.log_error(f"Error cancelling linked Journal Entry: {str(e)}", "Share Movement on_cancel")
 
-        # Clear reference in Share Agreement if linked
-        if self.source_document_type == "Share Agreement" and self.source_document_name:
-            if frappe.db.exists("Share Agreement", self.source_document_name):
-                frappe.db.set_value("Share Agreement", self.source_document_name, "share_movement_ref", None, update_modified=False)
-                frappe.db.set_value("Share Agreement", self.source_document_name, "status", "Draft", update_modified=False)
+        # Clear reference in Share Agreement / Convertible Loan Note if linked
+        self.detach_from_source_document(reset_status="Draft" if self.source_document_type == "Share Agreement" else "Active")
 
         self.db_set("status", "Cancelled", update_modified=False)
 
@@ -118,13 +136,40 @@ class ShareMovement(Document):
         if self.from_shareholder:
             recalculate_shareholder_totals(self.from_shareholder)
 
-    def before_delete(self):
-        """Prevent deletion of submitted documents"""
-        if self.docstatus == 1:
-            frappe.throw(_("Cannot delete submitted Share Movement. Please cancel first."))
+    def detach_from_source_document(self, reset_status):
+        """Clear the back-reference on the Share Agreement / Convertible Loan Note
+        this movement came from. Must run before deletion (in on_trash, not
+        before_delete — see on_trash's docstring) so Frappe's own link check
+        doesn't block deleting this movement while something still points to it."""
+        if self.source_document_type == "Share Agreement" and self.source_document_name:
+            if frappe.db.exists("Share Agreement", self.source_document_name):
+                frappe.db.set_value("Share Agreement", self.source_document_name, {
+                    "share_movement_ref": None,
+                    "status": reset_status
+                }, update_modified=False)
+
+        if self.source_document_type == "Convertible Loan Note" and self.source_document_name:
+            if frappe.db.exists("Convertible Loan Note", self.source_document_name):
+                frappe.db.set_value("Convertible Loan Note", self.source_document_name, {
+                    "share_transfer_ref": None,
+                    "status": reset_status
+                }, update_modified=False)
 
     def on_trash(self):
-        """Clean up linked JE when deleting cancelled Share Movement"""
+        """Clean up linked JE, and detach from any source document, when
+        deleting a Share Movement (Draft or Cancelled).
+
+        Detaching here — rather than in before_delete — matters: Frappe runs
+        on_trash *before* its own check for other documents still linking to
+        this one (frappe/model/delete_doc.py). A Share Agreement's
+        share_movement_ref, or a Convertible Loan Note's share_transfer_ref,
+        pointing at this movement would otherwise block the delete outright,
+        regardless of this movement's own status. (Note: `before_delete` is
+        not an actual Frappe hook — a version of this file used to define
+        one, but Frappe never calls it; removed.)
+        """
+        self.detach_from_source_document(reset_status="Draft" if self.source_document_type == "Share Agreement" else "Active")
+
         if self.docstatus == 2 and self.journal_entry_ref:
             try:
                 if frappe.db.exists("Journal Entry", self.journal_entry_ref):

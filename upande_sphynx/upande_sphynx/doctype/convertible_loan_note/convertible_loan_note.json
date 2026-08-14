@@ -65,9 +65,11 @@
   "share_transfer_ref",
   "conversion_journal_entry_ref",
   "repayment_date",
-  "repayment_journal_entry_ref",
-  "repayment_penalty_amount",
-  "interest_accruals"
+  "total_repaid",
+  "interest_accruals",
+  "repayments",
+  "more_info_tab",
+  "is_opening_entry"
  ],
  "fields": [
   {
@@ -125,6 +127,7 @@
    "fieldtype": "Currency",
    "in_list_view": 1,
    "label": "Principal Amount",
+   "options": "loan_currency",
    "reqd": 1
   },
   {
@@ -156,6 +159,7 @@
    "fieldname": "accrued_interest",
    "fieldtype": "Currency",
    "label": "Accrued Interest",
+   "options": "loan_currency",
    "read_only": 1
   },
   {
@@ -181,7 +185,8 @@
    "allow_on_submit": 1,
    "fieldname": "qualified_financing_threshold",
    "fieldtype": "Currency",
-   "label": "Qualified Financing Threshold"
+   "label": "Qualified Financing Threshold",
+   "options": "loan_currency"
   },
   {
    "allow_on_submit": 1,
@@ -198,7 +203,8 @@
    "description": "Maximum valuation for conversion calculation",
    "fieldname": "valuation_cap",
    "fieldtype": "Currency",
-   "label": "Valuation Cap"
+   "label": "Valuation Cap",
+   "options": "loan_currency"
   },
   {
    "fieldname": "conversion_share_type",
@@ -211,6 +217,7 @@
    "fieldname": "par_value_per_share",
    "fieldtype": "Currency",
    "label": "Par Value per Share",
+   "options": "loan_currency",
    "reqd": 1
   },
   {
@@ -242,6 +249,7 @@
    "fieldname": "total_converted_amount",
    "fieldtype": "Currency",
    "label": "Total Converted Amount",
+   "options": "loan_currency",
    "read_only": 1
   },
   {
@@ -258,6 +266,7 @@
    "fieldname": "conversion_price",
    "fieldtype": "Currency",
    "label": "Conversion Price per Share",
+   "options": "loan_currency",
    "read_only": 1
   },
   {
@@ -409,27 +418,21 @@
   },
   {
    "allow_on_submit": 1,
+   "description": "Set once the loan is fully repaid across all installments below.",
    "fieldname": "repayment_date",
    "fieldtype": "Date",
-   "label": "Repayment Date",
+   "label": "Fully Repaid On",
    "no_copy": 1,
    "read_only": 1
   },
   {
    "allow_on_submit": 1,
-   "fieldname": "repayment_journal_entry_ref",
-   "fieldtype": "Link",
-   "label": "Repayment Journal Entry",
-   "no_copy": 1,
-   "options": "Journal Entry",
-   "read_only": 1
-  },
-  {
-   "allow_on_submit": 1,
-   "fieldname": "repayment_penalty_amount",
+   "description": "Principal + interest + penalties paid across all installments so far.",
+   "fieldname": "total_repaid",
    "fieldtype": "Currency",
-   "label": "Early Repayment Penalty Applied",
+   "label": "Total Repaid",
    "no_copy": 1,
+   "options": "loan_currency",
    "read_only": 1
   },
   {
@@ -453,6 +456,7 @@
    "fieldtype": "Currency",
    "hidden": 1,
    "label": "Total Accrued ",
+   "options": "loan_currency",
    "read_only": 1
   },
   {
@@ -462,6 +466,26 @@
    "label": "Interest Accruals",
    "options": "CLN Interest Accrual",
    "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "repayments",
+   "fieldtype": "Table",
+   "label": "Repayments",
+   "options": "CLN Repayment",
+   "read_only": 1
+  },
+  {
+   "fieldname": "more_info_tab",
+   "fieldtype": "Tab Break",
+   "label": "More Info"
+  },
+  {
+   "default": "No",
+   "fieldname": "is_opening_entry",
+   "fieldtype": "Select",
+   "label": "Opening Entry",
+   "options": "No\nYes"
   }
  ],
  "grid_page_length": 50,

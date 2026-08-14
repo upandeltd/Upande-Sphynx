@@ -59,8 +59,9 @@
   "conversion_details",
   "section_break_zbvb",
   "auto_create_journal_entry",
-  "is_opening_entry",
-  "journal_entry_ref"
+  "journal_entry_ref",
+  "more_info_tab",
+  "is_opening_entry"
  ],
  "fields": [
   {
@@ -263,18 +264,11 @@
   },
   {
    "default": "1",
+   "description": "If checked, the Journal Entry is created and submitted automatically when you submit this Share Movement. Not available for Opening Entries.",
    "fieldname": "auto_create_journal_entry",
    "fieldtype": "Check",
-   "label": "Auto-create Journal Entry on Submit"
-  },
-  {
-   "allow_on_submit": 1,
-   "default": "No",
-   "description": "Opening entries represent share positions migrated from before go-live. No Journal Entry is created for them — the opening balance is already captured in the books' opening balance accounts.",
-   "fieldname": "is_opening_entry",
-   "fieldtype": "Select",
-   "label": "Opening Entry",
-   "options": "No\nYes"
+   "label": "Auto-create Journal Entry on Submit",
+   "read_only_depends_on": "eval:doc.is_opening_entry == 'Yes'"
   },
   {
    "collapsible": 1,
@@ -402,6 +396,19 @@
    "fieldtype": "Data",
    "label": "Share Agreement Type",
    "read_only": 1
+  },
+  {
+   "fieldname": "more_info_tab",
+   "fieldtype": "Tab Break",
+   "label": "More Info"
+  },
+  {
+   "allow_on_submit": 1,
+   "default": "No",
+   "fieldname": "is_opening_entry",
+   "fieldtype": "Select",
+   "label": "Opening Entry",
+   "options": "No\nYes"
   }
  ],
  "grid_page_length": 50,

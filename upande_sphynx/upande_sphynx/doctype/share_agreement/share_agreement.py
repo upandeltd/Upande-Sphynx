@@ -29,13 +29,17 @@ class ShareAgreement(Document):
         # Reset status
         self.db_set("status", "Cancelled", update_modified=False)
     
-    def before_delete(self):
-        """Prevent deletion of submitted documents"""
-        if self.docstatus == 1:
-            frappe.throw(_("Cannot delete submitted Share Agreement. Please cancel first."))
-    
     def on_trash(self):
-        """Clean up linked documents when deleting cancelled document"""
+        """Clean up linked documents when deleting cancelled document.
+
+        Deleting the linked Share Movement here uses force=1, which skips
+        Frappe's own cross-document link check — needed since the Share
+        Movement's own source_document_name (a Dynamic Link) points back at
+        this Agreement, and would otherwise block this Agreement's deletion.
+        The reverse direction — deleting the Share Movement first — is
+        handled by ShareMovement.on_trash detaching this reference before
+        Frappe's link check runs.
+        """
         if self.docstatus == 2:  # Cancelled
             # Delete linked Share Movement if cancelled
             if self.share_movement_ref:
@@ -49,10 +53,10 @@ class ShareAgreement(Document):
                                     je = frappe.get_doc("Journal Entry", sm.journal_entry_ref)
                                     if je.docstatus == 2:
                                         frappe.delete_doc("Journal Entry", je.name, force=1)
-                            except:
-                                pass
-                        
+                            except Exception:
+                                frappe.log_error(frappe.get_traceback(), "Share Agreement on_trash: JE cleanup failed")
+
                         frappe.delete_doc("Share Movement", sm.name, force=1)
-                except:
-                    pass
+                except Exception:
+                    frappe.log_error(frappe.get_traceback(), "Share Agreement on_trash: Share Movement cleanup failed")
 

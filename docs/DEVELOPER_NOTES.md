@@ -10,12 +10,63 @@ Technical history, known bugs, and deployment steps for the Capital Management f
 
 | # | Issue | Effect |
 |---|---|---|
-| 1 | **Share Register** and **Bulk Upload** doctypes are empty placeholders — no working fields, controller, or client script. | Don't build UI around them until someone finishes or removes them. |
-| 2 | **No configurable approval workflow.** Status fields (Draft/Approved/Shares Issued/Active/Converted/etc.) are read-only and only change as a side effect of the whitelisted action functions. | By design. If a real approval chain is wanted later, it needs a proper Workflow doctype, not more ad-hoc status-setting. |
+| 1 | **No configurable approval workflow.** Status fields (Draft/Approved/Shares Issued/Active/Converted/etc.) are read-only and only change as a side effect of the whitelisted action functions. | By design. If a real approval chain is wanted later, it needs a proper Workflow doctype, not more ad-hoc status-setting. |
+| 2 | **Found while testing the delete-blocking fix (session 6):** Share Movement's `bank_account` field is mandatory, but nothing requires a Share Agreement to have one set before "Issue Shares" runs. `issue_shares_from_agreement` passes `agreement.bank_account` straight through — if it's blank, the resulting Share Movement fails to insert with a `MandatoryError`. | Either make Share Agreement's `bank_account` field required, or have `issue_shares_from_agreement` validate it's set before attempting to create the Share Movement, with a clear error message instead of the raw MandatoryError. |
 
 ---
 
 ## Changelog
+
+### 2026-08-14 (session 8) — Collapsed Share Transfer's validation to one place (code side)
+Closed the backlog item of the same name. The two duplicate validation paths were:
+1. This app's own `doc_events` hook (`hooks.py` → `share_transfer_customization/share_transfer_controller.py`).
+2. A Server Script on production ("Share Transfer Multi-Currency Validation", Before Submit) doing overlapping checks with one real numeric difference (see session 3's changelog entry — already resolved there by keeping this repo's exchange-rate-multiplied convention and folding in the Server Script's "total amount > 0" check).
+
+What was actually left to "collapse" was dead weight *within this file and hooks.py*, not new logic:
+- `share_transfer_controller.py` had ~100 lines of fully commented-out code at the top — an old draft of `set_standard_accounts`/`calculate_rate_and_amount`/`create_custom_journal_entry` predating the live versions further down the same file. Deleted; the live functions were already confirmed (session 3) to be a complete superset of what the commented draft and the production Server Script both did.
+- `hooks.py`'s `doc_events` section had a stray leading `# doc_events = {` / `# hooks.py` comment pair, a commented-out dead reference to a `Share Movement` validate hook using the old orphaned-function pattern from before Share Movement had a real controller class (session 1), a second fully-commented-out `doc_events` dict referencing a nonexistent `validate_share_transfer` function and wiring `create_custom_journal_entry` to `on_submit` (explicitly rejected by design — the comment right above it says why), and a dangling `"*": {...}` example fragment. All removed; one real `doc_events` dict remains.
+- Verified via `frappe.get_hooks("doc_events")` and direct attribute checks after a clean `bench migrate` that nothing was lost — `set_standard_accounts`, `calculate_rate_and_amount`, `validate_accounts`, and `create_custom_journal_entry` all still resolve and are still wired exactly as before.
+
+**What's not code-side and still needs doing**: disabling the actual "Share Transfer Multi-Currency Validation" Server Script *on production* — this session has no access to that environment (confirmed earlier: the local `sphynx` bench site is not verified to be the same as `sphynx.c.frappe.cloud`). That step is already tracked in the Production Deployment Checklist below; this changelog entry doesn't change that checklist, only closes the code-side half of the backlog item.
+
+### 2026-08-14 (session 7) — Removed Share Register and Bulk Upload
+Per explicit instruction, rather than "finish or remove" (the backlog item this closes) — removed.
+- Confirmed zero data loss first: **Share Register** was `is_virtual: 1` with no backing table at all; **Bulk Upload** had a real table but 0 rows.
+- Deleted both `DocType` records from the site (`frappe.delete_doc("DocType", ..., force=True)`, which also dropped Bulk Upload's now-empty table), then deleted both doctype folders from the app source entirely (`doctype/share_register/`, `doctype/bulk_upload/`).
+- No other doctype, report, hooks.py entry, or fixture referenced either one — the only remaining references were documentation (SOP known-issues/troubleshooting rows, this file's Known Issues table), now removed/updated accordingly.
+- Not related: `api/capital_management.py::get_share_register` is a same-named but unconnected function (a dead, never-called aggregation query predating this session) — left as-is, since it doesn't reference the Share Register doctype and removing it wasn't asked for.
+
+### 2026-08-14 (session 6) — Production bug reports: delete blocking, auto-JE checkbox, CLN installments
+Three bugs reported from production testing, all fixed and verified.
+
+**1. Couldn't delete a cancelled/Draft Share Movement or Share Agreement while cross-linked.**
+Root cause: `before_delete` is not an actual Frappe document hook — confirmed via `grep` against `frappe/model/`, zero matches. All three doctypes (Share Movement, Share Agreement, Convertible Loan Note) had defined one, and none of them ever ran; Frappe's real protection against deleting a submitted document is its own core `check_permission_and_not_submitted` (`frappe/model/delete_doc.py`). The actual blocker was Frappe's cross-document link check (`check_if_doc_is_linked` / `check_if_doc_is_dynamically_linked`), which runs *after* `on_trash` but *before* the row is actually removed — so a Share Agreement's `share_movement_ref` (or a CLN's `share_transfer_ref`), still pointing at the Share Movement being deleted, blocked the delete outright regardless of either document's own status.
+- Removed the three dead `before_delete` methods.
+- Added `ShareMovement.detach_from_source_document()`, called from both `on_cancel` (already existed for the Share Agreement case; extended to also cover Convertible Loan Note) and the new, more thorough `on_trash` — clearing the back-reference and resetting the source document's status *before* Frappe's link check runs, regardless of the Share Movement's own docstatus (Draft or Cancelled).
+- Improved `ShareAgreement.on_trash`'s bare `except: pass` to at least `frappe.log_error`, for future debuggability.
+- **Verified live** on the dev site with an isolated, fully-cleaned-up test fixture: created a Shareholder + Share Agreement + Share Movement, cancelled both, manually re-established the cross-link (simulating historical data from before this fix), and confirmed `frappe.delete_doc("Share Movement", ...)` now succeeds where it previously raised `LinkExistsError`. Also verified the Agreement itself could then be cancelled and deleted cleanly.
+- **Found a second, unrelated bug while testing this**: Share Movement's `bank_account` is mandatory, but `issue_shares_from_agreement` doesn't check the source Share Agreement has one set before creating the Share Movement — surfaces as a raw `MandatoryError` instead of a clear message. Logged as Known Issue #3, not fixed (out of scope for what was asked this round).
+
+**2. "Auto-create Journal Entry on Submit" checkbox did nothing.**
+The field existed (default checked) but no code ever read it.
+- `ShareMovement.on_submit()` now calls `create_journal_entry_from_share_movement` automatically when the checkbox is checked and no Journal Entry exists yet, catching and logging any failure (with a fallback message pointing to the manual Action) rather than blocking the submit.
+- `ShareMovement.validate()` forces the checkbox off whenever `is_opening_entry == "Yes"` (opening entries never get a Journal Entry at all) — enforced server-side regardless of what the client sends.
+- Added `read_only_depends_on` on the field for the same condition, and a client-side `auto_create_journal_entry` change handler showing an informational `msgprint` either way ("will be created automatically on submit" / "use Create Journal Entry after submitting yourself").
+- The Share Movement intro banner (added session 5) now branches three ways: Opening Entry Draft, non-opening Draft with auto-create on, non-opening Draft with auto-create off — each with accurate guidance.
+
+**3. CLN repayment only supported paying off the entire loan at once.**
+Rebuilt as an installment model, mirroring the existing Interest Accruals pattern:
+- New child doctype **CLN Repayment** (`repayment_date`, `principal_paid`, `interest_paid`, `penalty_paid`, `exchange_rate`, `journal_entry`, `remaining_principal`, `remaining_interest`, `currency`, `remarks`), analogous to CLN Interest Accrual.
+- Convertible Loan Note's single-shot `repayment_journal_entry_ref` / `repayment_penalty_amount` fields (added session 4) removed — replaced with a `repayments` Table field and a `total_repaid` running-total field. `repayment_date` is repurposed to mean "fully repaid on" (only set once the balance hits zero), relabeled "Fully Repaid On".
+- New `get_cln_outstanding_balance(cln_name)` — returns what's still owed (`principal_amount` minus `SUM(principal_paid)`, `accrued_interest` minus `SUM(interest_paid)` across prior installments), without mutating `principal_amount`/`accrued_interest` themselves.
+- `record_cln_repayment` rewritten to accept `principal_amount`/`interest_amount` for *this installment* (each optional — omit either to default to paying it off in full, preserving the old "just repay it" behavior as the simple case). Validates neither exceeds what's outstanding. Posts a JE sized to this installment only (omitting the Loan Liability or Interest Payable line entirely if that portion is zero this time). Sets status to "Repaid" only once both outstanding amounts hit zero (0.01 epsilon).
+- `ConvertibleLoanNote.on_cancel`/`on_trash` updated to iterate the `repayments` child table (cancelling/deleting every installment's JE) instead of the single removed field.
+- Client-side "Record Repayment" button now fetches the current outstanding balance first (via `get_cln_outstanding_balance`), pre-fills principal/interest fields with the full outstanding amounts (editable down for a partial installment), and shows currency-aware labels. Button visibility condition simplified to just `status === 'Active'` — it doesn't need to check for an existing repayment JE anymore, since installments are supported until the loan reaches Repaid.
+
+**Also (per explicit request):**
+- **CLN currency symbols fixed** — all 9 Currency-type fields on Convertible Loan Note (`principal_amount`, `accrued_interest`, `qualified_financing_threshold`, `valuation_cap`, `par_value_per_share`, `total_converted_amount`, `conversion_price`, `repayment_penalty_amount` → now `total_repaid`, `total_accrued_from_table`) had `options: null`, always showing the site default currency symbol regardless of `loan_currency`. All now set to `options: "loan_currency"`. (CLN Interest Accrual's child table fields were already correct — confirmed no change needed there.)
+- **Opening Entry field**: removed the `description` text from Share Agreement's and Share Movement's `is_opening_entry` field (per explicit request — the guidance now lives only in the user guide, not as an inline field description). Added the same field to Convertible Loan Note (didn't exist there before), wired into `record_cln_disbursement`: when `is_opening_entry == "Yes"`, skips Journal Entry creation entirely and just activates the loan, mirroring how Share Movement's Opening Entry already worked.
+- **New "More Info" tab** added to Share Agreement (previously had no tabs at all), Share Movement, and Convertible Loan Note, with `is_opening_entry` moved there in all three — out of the main flow, since it's an edge case (migrated data), not a field someone fills in during a normal transaction.
 
 ### 2026-08-14 (session 5) — Issue Shares UX
 - **"Issue Shares" on Share Agreement now redirects straight to the new Share Movement** (`frappe.set_route`) instead of showing a `msgprint` with a click-to-open button.
@@ -97,7 +148,5 @@ None of the above reaches the production Frappe Cloud site automatically — it 
 
 ## Lower-priority backlog
 
-1. Decide the fate of Share Register and Bulk Upload (finish or remove).
-2. Clean up the John Doe/Company B.V `company = Sphynx` Shareholder data (see Changelog, session 4).
-3. Delete the disabled, now-superseded Client Script records once confident the app-based replacements have run cleanly for a while.
-4. Collapse Share Transfer's validation logic to one place once the production Server Script is disabled.
+1. Clean up the John Doe/Company B.V `company = Sphynx` Shareholder data (see Changelog, session 4).
+2. Delete the disabled, now-superseded Client Script records once confident the app-based replacements have run cleanly for a while.

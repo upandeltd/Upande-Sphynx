@@ -47,7 +47,7 @@ class ConvertibleLoanNote(Document):
         self._cached_refs = {
             'disbursement_je': self.disbursement_journal_entry_ref,
             'conversion_je': self.conversion_journal_entry_ref,
-            'repayment_je': self.repayment_journal_entry_ref,
+            'repayment_jes': [],
             'share_movement': self.share_transfer_ref,
             'interest_accruals': []
         }
@@ -58,20 +58,30 @@ class ConvertibleLoanNote(Document):
                 if accrual.journal_entry:
                     self._cached_refs['interest_accruals'].append(accrual.journal_entry)
 
+        # Cache repayment installment JEs
+        if hasattr(self, 'repayments') and self.repayments:
+            for installment in self.repayments:
+                if installment.journal_entry:
+                    self._cached_refs['repayment_jes'].append(installment.journal_entry)
+
         # Clear the link fields using db_set (works on submitted docs)
         frappe.db.set_value("Convertible Loan Note", self.name, {
             "disbursement_journal_entry_ref": None,
             "conversion_journal_entry_ref": None,
-            "repayment_journal_entry_ref": None,
             "share_transfer_ref": None
         }, update_modified=False)
-        
-        # Clear JE references in child table
+
+        # Clear JE references in child tables
         if hasattr(self, 'interest_accruals') and self.interest_accruals:
             for accrual in self.interest_accruals:
-                frappe.db.set_value("CLN Interest Accrual", accrual.name, 
+                frappe.db.set_value("CLN Interest Accrual", accrual.name,
                                   "journal_entry", None, update_modified=False)
-        
+
+        if hasattr(self, 'repayments') and self.repayments:
+            for installment in self.repayments:
+                frappe.db.set_value("CLN Repayment", installment.name,
+                                  "journal_entry", None, update_modified=False)
+
         frappe.db.commit()
         
         print(f"✓ Cleared link references for {self.name}")
@@ -145,16 +155,16 @@ class ConvertibleLoanNote(Document):
             except Exception as e:
                 frappe.log_error(f"Error cancelling Disbursement JE: {str(e)}")
 
-        # 5. Cancel Repayment JE
-        if refs.get('repayment_je'):
+        # 5. Cancel Repayment installment JEs
+        for je_name in refs.get('repayment_jes', []):
             try:
-                je = frappe.get_doc("Journal Entry", refs['repayment_je'])
+                je = frappe.get_doc("Journal Entry", je_name)
                 if je.docstatus == 1:
                     je.flags.ignore_links = True
                     je.cancel()
                     cancelled.append(f"Repayment JE {je.name}")
             except Exception as e:
-                frappe.log_error(f"Error cancelling Repayment JE: {str(e)}")
+                frappe.log_error(f"Error cancelling Repayment JE {je_name}: {str(e)}")
 
         if cancelled:
             print(f"✓ Cancelled: {', '.join(cancelled)}")
@@ -212,8 +222,10 @@ class ConvertibleLoanNote(Document):
         if self.disbursement_journal_entry_ref:
             linked_docs.append(("Journal Entry", self.disbursement_journal_entry_ref))
 
-        if self.repayment_journal_entry_ref:
-            linked_docs.append(("Journal Entry", self.repayment_journal_entry_ref))
+        if hasattr(self, 'repayments') and self.repayments:
+            for installment in self.repayments:
+                if installment.journal_entry:
+                    linked_docs.append(("Journal Entry", installment.journal_entry))
 
         # Delete all linked cancelled documents
         for doctype, docname in linked_docs:
@@ -227,8 +239,3 @@ class ConvertibleLoanNote(Document):
                 frappe.log_error(f"Error deleting {doctype} {docname}: {str(e)}")
         
         frappe.db.commit()
-    
-    def before_delete(self):
-        """Prevent deletion of submitted documents"""
-        if self.docstatus == 1:
-            frappe.throw(_("Cannot delete submitted Convertible Loan Note. Please cancel first."))

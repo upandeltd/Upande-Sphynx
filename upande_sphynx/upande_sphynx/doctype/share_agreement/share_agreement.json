@@ -54,11 +54,12 @@
   "journal_entry_ref",
   "share_transfer_ref",
   "share_movement_ref",
-  "is_opening_entry",
   "attachments_section",
   "signed_agreement",
   "supporting_documents",
-  "amended_from"
+  "amended_from",
+  "more_info_tab",
+  "is_opening_entry"
  ],
  "fields": [
   {
@@ -331,14 +332,6 @@
    "read_only": 1
   },
   {
-   "default": "No",
-   "description": "Opening entries represent share positions migrated from before go-live. No Journal Entry is created for them — the opening balance is already captured in the books' opening balance accounts.",
-   "fieldname": "is_opening_entry",
-   "fieldtype": "Select",
-   "label": "Opening Entry",
-   "options": "No\nYes"
-  },
-  {
    "collapsible": 1,
    "fieldname": "attachments_section",
    "fieldtype": "Section Break",
@@ -363,6 +356,18 @@
    "print_hide": 1,
    "read_only": 1,
    "search_index": 1
+  },
+  {
+   "fieldname": "more_info_tab",
+   "fieldtype": "Tab Break",
+   "label": "More Info"
+  },
+  {
+   "default": "No",
+   "fieldname": "is_opening_entry",
+   "fieldtype": "Select",
+   "label": "Opening Entry",
+   "options": "No\nYes"
   },
   {
    "default": "USD",

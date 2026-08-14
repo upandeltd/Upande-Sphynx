@@ -242,9 +242,8 @@ html[data-theme="dark"] .cms-sop {
 						</ul>
 					</li>
 					<li>Payment method (Bank Transfer / Cash / Cheque / Other), bank account, payment date, and the signed agreement attachment</li>
-					<li><strong>Opening Entry</strong> &mdash; leave "No" for a normal transaction. Set "Yes" only for a share position migrated from before go-live.</li>
 				</ul>
-				<p><em>Total Consideration</em> and <em>Share Premium Amount</em> calculate automatically.</p>
+				<p><em>Total Consideration</em> and <em>Share Premium Amount</em> calculate automatically. Under the <strong>More Info</strong> tab, set <strong>Opening Entry</strong> to "Yes" only for a share position migrated from before go-live &mdash; leave "No" for a normal transaction.</p>
 			</li>
 			<li>
 				<h4>Submit the agreement</h4>
@@ -256,7 +255,7 @@ html[data-theme="dark"] .cms-sop {
 			</li>
 			<li>
 				<h4>Submit the Share Movement, then record the payment</h4>
-				<p>Submit the Share Movement first, then use <strong>Create Journal Entry</strong> to post the accounting entry. A banner reminds you this step is outstanding until you do it. <strong>Unavailable for Opening Entries</strong> &mdash; no Journal Entry is needed, but submitting the Share Movement is still required so the shares count toward the shareholder's holdings.</p>
+				<p>Before submitting, check <strong>Auto-create Journal Entry on Submit</strong> (checked by default) &mdash; a pop-up confirms either choice: checked means the Journal Entry posts automatically on submit; unchecked means you'll use <strong>Create Journal Entry</strong> (Actions) yourself afterward. A banner keeps you posted on what's still outstanding. <strong>For Opening Entries the checkbox is locked off</strong> and no Journal Entry is ever created, but submitting is still required so the shares count toward the shareholder's holdings.</p>
 			</li>
 		</ol>
 		<div class="cms-callout">
@@ -283,11 +282,12 @@ html[data-theme="dark"] .cms-sop {
 					<li>Conversion Discount Rate (a price discount rewarding the lender for lending early), Valuation Cap (a maximum company valuation used for the conversion price, protecting the lender if the company's value has grown a lot), Conversion Share Type, Par Value per Share</li>
 					<li>Loan Liability Account, Bank Account, Interest Expense/Payable Accounts, Share Capital/Premium Accounts (needed later at conversion), signed note attachment</li>
 				</ul>
+				<p>Recording a pre-existing loan? Under the <strong>More Info</strong> tab, set <strong>Opening Entry</strong> to "Yes" &mdash; disbursement will then just mark the loan Active without posting a Journal Entry.</p>
 			</li>
 			<li><h4>Submit the CLN</h4></li>
 			<li>
 				<h4>Record the disbursement</h4>
-				<p>Once the money has gone out, click <strong>Actions &rarr; Record Loan Disbursement</strong>. Posts the accounting entry and moves the loan to "Active."</p>
+				<p>Once the money has gone out, click <strong>Actions &rarr; Record Loan Disbursement</strong>. Posts the accounting entry and moves the loan to "Active." (No Journal Entry for Opening Entries &mdash; see above.)</p>
 			</li>
 			<li>
 				<h4>Accrue interest periodically</h4>
@@ -296,12 +296,12 @@ html[data-theme="dark"] .cms-sop {
 			<li>
 				<h4>Convert to shares &mdash; or, repay in cash instead</h4>
 				<p><strong>To convert:</strong> when the trigger is met, click <strong>Actions &rarr; Convert to Shares</strong> with the next round's price and/or fully diluted share count. This works out the conversion price (whichever gives the lender the better deal between the discount and the valuation cap), clears the loan into share capital, creates a Share Movement, and marks the loan "Converted."</p>
-				<p><strong>To repay in cash instead:</strong> click <strong>Actions &rarr; Record Repayment</strong>, giving a repayment date and, only if this loan has "Early Repayment Allowed" checked, an optional penalty amount (needs an Interest Expense Account set on the loan). This clears the loan liability and any accrued interest, plus the penalty if one applies, out of the bank account, and marks the loan "Repaid."</p>
+				<p><strong>To repay in cash instead:</strong> click <strong>Actions &rarr; Record Repayment</strong> &mdash; this supports installments, so you don't have to pay it all at once. The dialog pre-fills the current outstanding principal and interest; reduce either to record a partial payment, or leave them as-is to settle in full. Add an early repayment penalty only if "Early Repayment Allowed" is checked (needs an Interest Expense Account set). Each installment posts its own Journal Entry and logs a row in the loan's <strong>Repayments</strong> table; the loan stays "Active" until both outstanding amounts hit zero, at which point it becomes "Repaid."</p>
 			</li>
 		</ol>
 		<div class="cms-callout">
 			<div class="cms-callout-label">If you need to cancel</div>
-			<p>Standard Cancel action &mdash; cascades automatically, cancelling the resulting Share Movement, the conversion entry, the repayment entry, every interest accrual entry, and the disbursement entry, and updating the lender's totals. Once cancelled, use <strong>Delete CLN &amp; All Linked Docs</strong> to remove it entirely.</p>
+			<p>Standard Cancel action &mdash; cascades automatically, cancelling the resulting Share Movement, the conversion entry, every repayment installment's entry, every interest accrual entry, and the disbursement entry, and updating the lender's totals. Once cancelled, use <strong>Delete CLN &amp; All Linked Docs</strong> to remove it entirely.</p>
 		</div>
 	</section>
 
@@ -396,7 +396,6 @@ html[data-theme="dark"] .cms-sop {
 					<tr><td>One shareholder's Total Shares Held looks negative or clearly wrong</td><td>A data setup issue affecting a small number of historical transactions</td><td>The totals are calculated correctly from what's recorded; ask whoever administers the system to look into that shareholder's transactions</td></tr>
 					<tr><td>Both "Convert to Shares" and "Record Repayment" show on a CLN</td><td>Expected &mdash; an active loan can go either way; use whichever applies and the other disappears once status changes</td><td>Pick the one that matches what's actually happening with this loan</td></tr>
 					<tr><td>The Actions buttons don't appear at all</td><td>The site may need an update applied</td><td>Ask whoever administers the system to check and apply the latest update</td></tr>
-					<tr><td>Don't use Share Register or Bulk Upload</td><td>Both are unfinished placeholders</td><td>Use the processes and reports in this guide instead</td></tr>
 				</tbody>
 			</table>
 		</div>
