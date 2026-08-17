@@ -17,6 +17,24 @@ Technical history, known bugs, and deployment steps for the Capital Management f
 
 ## Changelog
 
+### 2026-08-17 (session 9) — Fixed certificate number overflow and Share Movement cancel behavior
+Two production bugs reported after issuing shares on a large Share Agreement:
+
+**1. `Data too long for column 'certificate_numbers'` when issuing large share agreements.**
+`ShareMovement.generate_certificate_numbers()` (`share_movement.py`) generated one `CERT-...` entry per 100 shares and joined every single one into the `certificate_numbers` text column with no cap. A large issuance (thousands of certificates) blew past the column's 65,535-byte limit and crashed the insert outright — `sm.insert()` in `issue_shares_from_agreement` never even got to create the Share Movement.
+Fix: past 20 certificates, the field now stores a compact range instead of enumerating every entry, e.g. `CERT-Special Preferred-00001 to CERT-Special Preferred-01500 (1500 certificates)`. The "continue numbering from the last movement" lookup was switched from string-splitting to a regex that finds the highest certificate number in either the old listed format or the new range format, so numbering still continues correctly across movements whichever format the last movement used. Verified: a simulated 150,000-share issuance now produces an 80-byte string instead of blowing the column.
+
+**2. Cancelling a Share Movement was effectively touching its prior document.**
+Reported behavior: cancelling a Share Movement (normally done to amend a mistake) shouldn't affect the Share Agreement (or Convertible Loan Note) it came from — that's the *prior* document; only *forward* documents (the Journal Entry the movement created) should be cancelled.
+What was actually happening: `on_cancel` called `detach_from_source_document(reset_status="Draft"/"Active")`, which reset the source document's `status` field back to `Draft`/`Active` — making a submitted, "Shares Issued" Share Agreement look reverted/undone just because its downstream movement was cancelled for a correction.
+Investigating *why* the ref was being cleared at all surfaced a real technical constraint: Frappe's own `check_no_back_links_exist` (`frappe/model/document.py`, run right after `on_cancel` during `cancel()`) throws `LinkExistsError` and blocks the cancel outright if a submitted document still links to it — confirmed by removing the detach call entirely and reproducing the block live. So the reference genuinely has to be cleared for the cancel to succeed at all; only the *status reset* was the actual bug.
+Fix:
+- `detach_from_source_document(reset_status)` now treats `reset_status=None` as "clear the back-reference only, leave the source document's status alone."
+- `on_cancel` calls it with `reset_status=None` — satisfies Frappe's link check without touching the Agreement/CLN's status.
+- `on_trash` (permanent deletion) is unchanged — still passes `"Draft"`/`"Active"` explicitly, since deleting the movement erases that issuance/conversion's history entirely and the source document should be freed up for a fresh one.
+- Added `relink_source_document()`, called from `on_submit` when `self.amended_from` is set: when the cancelled movement is amended and resubmitted (the normal Frappe amend flow), the source Share Agreement/CLN's reference is automatically restored to point at the new document, with status set back to `"Shares Issued"`/`"Converted"`.
+Verified live end-to-end (isolated test data, fully cleaned up after): submit a Share Movement → cancel it → confirm the Share Agreement's status stayed `"Shares Issued"` (ref cleared, status untouched) → amend + resubmit the movement → confirm the Share Agreement was relinked to the new document.
+
 ### 2026-08-14 (session 8) — Collapsed Share Transfer's validation to one place (code side)
 Closed the backlog item of the same name. The two duplicate validation paths were:
 1. This app's own `doc_events` hook (`hooks.py` → `share_transfer_customization/share_transfer_controller.py`).
@@ -118,35 +136,3 @@ Rebuilt as an installment model, mirroring the existing Interest Accruals patter
 
 ---
 
-## Production deployment checklist
-
-None of the above reaches the production Frappe Cloud site automatically — it was all built and verified on a local dev site (`sphynx.local`).
-
-1. Deploy the updated `upande_sphynx` app code.
-2. Run, in order: `bench --site <site> migrate`, `bench build --app upande_sphynx`, `bench --site <site> clear-cache`.
-3. **Before assuming the migrate is clean**, check for the same `Share Transfer-custom_issue_type` corruption described above (Changelog, 2026-08-14 session 3) — it will abort `sync_customizations()` silently partway through otherwise:
-   ```python
-   frappe.db.get_value("Custom Field", "Share Transfer-custom_issue_type", "fieldname")
-   # if this returns "issue_type" instead of "custom_issue_type":
-   frappe.db.set_value("Custom Field", "Share Transfer-custom_issue_type", "fieldname", "custom_issue_type")
-   frappe.db.commit()
-   ```
-4. Check production for its own set of orphaned Custom Fields on Share Agreement/Share Movement/Convertible Loan Note (Known Issue #5) — the 12 found on the dev site were dev-site-specific; production has drifted independently all session and may have different ones.
-5. Disable these Client Scripts (leave them in place, just disabled, for rollback):
-   - Share Agreement: "Share Agreement Buttons", "Share Agreement Account Filters"
-   - Share Movement: "Share Movement Calculations", "Share Movement Account Filters"
-   - Convertible Loan Note: "Convertible Loan Note Buttons", "Principal == Valuation", "Convertible Loan Note Account Filters"
-   - Share Transfer: "Currency Share Management", "Share Management"
-6. Disable these Server Scripts:
-   - "Create Multi-Currency Journal Entry for Share Transfer" (API)
-   - "Share Transfer Multi-Currency Validation" (Before Submit)
-   - "Share Capital Currency Revaluation" (Scheduler Event) — was never functioning; disabling changes nothing observable.
-7. Set the new **Share Capital Account** field on each Company before expecting the yearly FX revaluation task to do anything, and get accounting sign-off on the debit/credit direction (see Changelog) before treating its output as anything but a draft to review.
-8. Clean up the two ambiguous Shareholder records behind Known Issue #4 (`company = Sphynx` on both "John Doe" and "Company B.V") if/when convenient — not blocking, since the Opening Entry field now handles new imports going forward.
-
----
-
-## Lower-priority backlog
-
-1. Clean up the John Doe/Company B.V `company = Sphynx` Shareholder data (see Changelog, session 4).
-2. Delete the disabled, now-superseded Client Script records once confident the app-based replacements have run cleanly for a while.

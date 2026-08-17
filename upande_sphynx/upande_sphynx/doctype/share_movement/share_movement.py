@@ -1,6 +1,8 @@
 # Copyright (c) 2025, Jeniffer and contributors
 # For license information, please see license.txt
 
+import re
+
 import frappe
 from frappe import _
 from frappe.model.document import Document
@@ -73,21 +75,32 @@ class ShareMovement(Document):
         if last_cert and last_cert[0][0]:
             try:
                 last_cert_str = last_cert[0][0]
-                last_num_str = last_cert_str.split(",")[-1].strip()
-                if "-" in last_num_str:
-                    start_num = int(last_num_str.split("-")[-1]) + 1
+                numbers_found = re.findall(r"-(\d{5,})\b", last_cert_str)
+                if numbers_found:
+                    start_num = max(int(n) for n in numbers_found) + 1
             except Exception:
                 start_num = 1
 
         shares_per_cert = 100  # Can be customized
         num_certificates = max(1, (self.number_of_shares + shares_per_cert - 1) // shares_per_cert)
+        end_num = start_num + num_certificates - 1
+        share_class_label = self.share_class or "SHARE"
 
-        cert_numbers = []
-        for i in range(num_certificates):
-            cert_num = "CERT-{0}-{1:05d}".format(self.share_class or "SHARE", start_num + i)
-            cert_numbers.append(cert_num)
-
-        self.certificate_numbers = ", ".join(cert_numbers)
+        # Listing every certificate out as "CERT-x-00001, CERT-x-00002, ..." blows
+        # past the certificate_numbers column's size for large issuances (each
+        # entry is ~30 bytes, so a few thousand certificates overflow it). Past a
+        # reasonable count, collapse to a range instead of enumerating each one.
+        MAX_LISTED_CERTIFICATES = 20
+        if num_certificates <= MAX_LISTED_CERTIFICATES:
+            cert_numbers = [
+                "CERT-{0}-{1:05d}".format(share_class_label, start_num + i)
+                for i in range(num_certificates)
+            ]
+            self.certificate_numbers = ", ".join(cert_numbers)
+        else:
+            self.certificate_numbers = _("CERT-{0}-{1:05d} to CERT-{0}-{2:05d} ({3} certificates)").format(
+                share_class_label, start_num, end_num, num_certificates
+            )
 
         frappe.msgprint(
             _("Certificate Numbers auto-generated: {0}").format(self.certificate_numbers),
@@ -104,6 +117,12 @@ class ShareMovement(Document):
         if self.from_shareholder:
             recalculate_shareholder_totals(self.from_shareholder)
 
+        # If this is an amended resubmission (the cancelled original was left
+        # untouched — see on_cancel), re-point the source Share Agreement /
+        # Convertible Loan Note at this new document.
+        if self.amended_from and self.source_document_type and self.source_document_name:
+            self.relink_source_document()
+
         if self.auto_create_journal_entry and not self.journal_entry_ref:
             from upande_sphynx.api.capital_management import create_journal_entry_from_share_movement
             try:
@@ -118,7 +137,18 @@ class ShareMovement(Document):
                 )
 
     def on_cancel(self):
-        """Handle cancellation - cancel linked JE and clear references"""
+        """Cancel forward documents (the Journal Entry this movement created).
+
+        The prior document's `status` (e.g. Share Agreement's "Shares Issued")
+        is deliberately left untouched — cancelling a Share Movement is
+        normally done to amend it, not to undo the prior document. Its
+        back-reference (share_movement_ref / share_transfer_ref) still has to
+        be cleared, though: Frappe's own check_no_back_links_exist would
+        otherwise block cancelling this movement outright while a submitted
+        Share Agreement/CLN still links to it. If this movement is later
+        amended and resubmitted, on_submit's relink_source_document restores
+        the reference.
+        """
         if self.journal_entry_ref:
             try:
                 je = frappe.get_doc("Journal Entry", self.journal_entry_ref)
@@ -127,8 +157,7 @@ class ShareMovement(Document):
             except Exception as e:
                 frappe.log_error(f"Error cancelling linked Journal Entry: {str(e)}", "Share Movement on_cancel")
 
-        # Clear reference in Share Agreement / Convertible Loan Note if linked
-        self.detach_from_source_document(reset_status="Draft" if self.source_document_type == "Share Agreement" else "Active")
+        self.detach_from_source_document(reset_status=None)
 
         self.db_set("status", "Cancelled", update_modified=False)
 
@@ -136,24 +165,53 @@ class ShareMovement(Document):
         if self.from_shareholder:
             recalculate_shareholder_totals(self.from_shareholder)
 
-    def detach_from_source_document(self, reset_status):
-        """Clear the back-reference on the Share Agreement / Convertible Loan Note
-        this movement came from. Must run before deletion (in on_trash, not
-        before_delete — see on_trash's docstring) so Frappe's own link check
-        doesn't block deleting this movement while something still points to it."""
+    def relink_source_document(self):
+        """Point the source Share Agreement / Convertible Loan Note's reference
+        back at this document. Used when this movement is an amended
+        resubmission of a cancelled movement whose reference was cleared by
+        on_cancel."""
         if self.source_document_type == "Share Agreement" and self.source_document_name:
             if frappe.db.exists("Share Agreement", self.source_document_name):
                 frappe.db.set_value("Share Agreement", self.source_document_name, {
-                    "share_movement_ref": None,
-                    "status": reset_status
+                    "share_movement_ref": self.name,
+                    "status": "Shares Issued"
                 }, update_modified=False)
 
         if self.source_document_type == "Convertible Loan Note" and self.source_document_name:
             if frappe.db.exists("Convertible Loan Note", self.source_document_name):
                 frappe.db.set_value("Convertible Loan Note", self.source_document_name, {
-                    "share_transfer_ref": None,
-                    "status": reset_status
+                    "share_transfer_ref": self.name,
+                    "status": "Converted"
                 }, update_modified=False)
+
+    def detach_from_source_document(self, reset_status):
+        """Clear the back-reference on the Share Agreement / Convertible Loan Note
+        this movement came from, so Frappe's own link check doesn't block
+        cancelling/deleting this movement while something still points to it
+        (must run before on_cancel's/on_trash's own back-link check — see
+        their docstrings).
+
+        `reset_status` also resets the source document's own status:
+        - None (from on_cancel): leave status as-is — the source document
+          isn't being undone, only detached from a movement that's about to
+          be amended or otherwise redone.
+        - "Draft"/"Active" (from on_trash): the movement is being permanently
+          deleted, erasing this issuance/conversion's history entirely, so
+          the source document is freed up for a fresh one.
+        """
+        if self.source_document_type == "Share Agreement" and self.source_document_name:
+            if frappe.db.exists("Share Agreement", self.source_document_name):
+                values = {"share_movement_ref": None}
+                if reset_status is not None:
+                    values["status"] = reset_status
+                frappe.db.set_value("Share Agreement", self.source_document_name, values, update_modified=False)
+
+        if self.source_document_type == "Convertible Loan Note" and self.source_document_name:
+            if frappe.db.exists("Convertible Loan Note", self.source_document_name):
+                values = {"share_transfer_ref": None}
+                if reset_status is not None:
+                    values["status"] = reset_status
+                frappe.db.set_value("Convertible Loan Note", self.source_document_name, values, update_modified=False)
 
     def on_trash(self):
         """Clean up linked JE, and detach from any source document, when
