@@ -117,6 +117,16 @@ class ShareMovement(Document):
         if self.from_shareholder:
             recalculate_shareholder_totals(self.from_shareholder)
 
+        # Opening Entries never get a Journal Entry (validate() already forces
+        # auto_create_journal_entry off for them), so nothing else will ever
+        # move their status off "Draft" — submission itself is the terminal
+        # state, so mark them "Issued" right away. Non-opening entries only
+        # become "Issued" once their Journal Entry is created (see
+        # create_journal_entry_from_share_movement), since that's the step
+        # that actually records the movement in the books.
+        if self.is_opening_entry == "Yes":
+            self.db_set("status", "Issued", update_modified=False)
+
         # If this is an amended resubmission (the cancelled original was left
         # untouched — see on_cancel), re-point the source Share Agreement /
         # Convertible Loan Note at this new document.

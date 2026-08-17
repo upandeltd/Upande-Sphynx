@@ -12,7 +12,7 @@
 
 import frappe
 from frappe import _
-from frappe.utils import flt, today
+from frappe.utils import today
 
 
 def execute(filters=None):
@@ -35,8 +35,8 @@ def get_columns():
 		{"label": _("Shares Acquired"), "fieldname": "shares_acquired", "fieldtype": "Int", "width": 120},
 		{"label": _("Shares Given Up"), "fieldname": "shares_given_up", "fieldtype": "Int", "width": 120},
 		{"label": _("Current Holding"), "fieldname": "current_holding", "fieldtype": "Int", "width": 130},
-		{"label": _("Ownership %"), "fieldname": "ownership_percentage", "fieldtype": "Percent", "width": 110},
-		{"label": _("Total Investment"), "fieldname": "total_investment", "fieldtype": "Currency", "width": 150},
+		{"label": _("Total Investment"), "fieldname": "total_investment", "fieldtype": "Float", "width": 150},
+		{"label": _("Currency"), "fieldname": "currency", "fieldtype": "Data", "width": 90},
 	]
 
 
@@ -44,50 +44,48 @@ def get_data(filters):
 	base_conditions = ["sm.company = %(company)s", "sm.docstatus = 1", "sm.transaction_date <= %(as_on_date)s"]
 	if filters.share_class:
 		base_conditions.append("sm.share_class = %(share_class)s")
+	if filters.shareholder:
+		base_conditions.append("holders.holder = %(shareholder)s")
 
+	# signed_qty is the per-row delta from this holder's point of view: positive
+	# when shares moved to them, negative when they gave shares up — regardless
+	# of whether that direction came from to_shareholder/from_shareholder or
+	# from a movement recorded with a negative number_of_shares. Deriving it
+	# once here (rather than re-deriving acquired/given-up separately from
+	# to_shareholder/from_shareholder) is what keeps a negative-quantity "out"
+	# movement from being silently absorbed into "Shares Acquired" instead of
+	# showing up under "Shares Given Up".
 	query = """
 		SELECT
 			holder AS shareholder,
-			sm.share_class AS share_class,
-			SUM(CASE WHEN sm.to_shareholder = holder THEN sm.number_of_shares ELSE 0 END) AS shares_acquired,
-			SUM(CASE WHEN sm.from_shareholder = holder THEN sm.number_of_shares ELSE 0 END) AS shares_given_up,
-			SUM(CASE WHEN sm.to_shareholder = holder THEN sm.number_of_shares ELSE -sm.number_of_shares END) AS current_holding,
-			SUM(CASE WHEN sm.to_shareholder = holder AND sm.movement_type != 'Share Buyback'
-				THEN sm.total_amount_base_currency ELSE 0 END) AS total_investment
-		FROM `tabShare Movement` sm
-		JOIN (
-			SELECT name, to_shareholder AS holder FROM `tabShare Movement`
-			UNION
-			SELECT name, from_shareholder AS holder FROM `tabShare Movement` WHERE from_shareholder IS NOT NULL AND from_shareholder != ''
-		) holders ON holders.name = sm.name
-		WHERE {conditions}
-		GROUP BY holder, sm.share_class
+			share_class,
+			SUM(CASE WHEN signed_qty > 0 THEN signed_qty ELSE 0 END) AS shares_acquired,
+			SUM(CASE WHEN signed_qty < 0 THEN -signed_qty ELSE 0 END) AS shares_given_up,
+			SUM(signed_qty) AS current_holding,
+			SUM(CASE WHEN signed_qty > 0 AND movement_type != 'Share Buyback' THEN total_amount ELSE 0 END) AS total_investment,
+			MAX(transaction_currency) AS currency
+		FROM (
+			SELECT
+				sm.share_class AS share_class,
+				sm.movement_type AS movement_type,
+				sm.transaction_currency AS transaction_currency,
+				sm.total_amount AS total_amount,
+				holders.holder AS holder,
+				CASE WHEN holders.holder = sm.to_shareholder THEN sm.number_of_shares ELSE -sm.number_of_shares END AS signed_qty
+			FROM `tabShare Movement` sm
+			JOIN (
+				SELECT name, to_shareholder AS holder FROM `tabShare Movement`
+				UNION
+				SELECT name, from_shareholder AS holder FROM `tabShare Movement` WHERE from_shareholder IS NOT NULL AND from_shareholder != ''
+			) holders ON holders.name = sm.name
+			WHERE {conditions}
+		) x
+		GROUP BY holder, share_class
 		HAVING current_holding != 0
 	"""
 
-	# Class-wide totals (never shareholder-filtered) so ownership % stays correct
-	# even when the report is narrowed to a single shareholder.
-	class_totals = frappe.db.sql(
-		query.format(conditions=" AND ".join(base_conditions)) + " ORDER BY sm.share_class",
+	return frappe.db.sql(
+		query.format(conditions=" AND ".join(base_conditions)) + " ORDER BY share_class, current_holding DESC",
 		filters,
 		as_dict=True,
 	)
-	totals_by_class = {}
-	for row in class_totals:
-		totals_by_class[row.share_class] = totals_by_class.get(row.share_class, 0) + row.current_holding
-
-	display_conditions = list(base_conditions)
-	if filters.shareholder:
-		display_conditions.append("holders.holder = %(shareholder)s")
-
-	rows = frappe.db.sql(
-		query.format(conditions=" AND ".join(display_conditions)) + " ORDER BY sm.share_class, current_holding DESC",
-		filters,
-		as_dict=True,
-	)
-
-	for row in rows:
-		class_total = totals_by_class.get(row.share_class) or 0
-		row.ownership_percentage = flt(row.current_holding / class_total * 100, 2) if class_total else 0
-
-	return rows

@@ -54,7 +54,7 @@ def get_data(filters):
             st.name,
             st.to_shareholder AS shareholder,
             st.transfer_type,
-            st.issue_type AS issue_type,
+            st.custom_issue_type AS issue_type,
             st.equity_or_liability_account,
             st.asset_account,
             st.no_of_shares,
